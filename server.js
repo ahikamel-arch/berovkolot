@@ -190,13 +190,19 @@ io.on('connection', (socket) => {
 function calculateResults() {
   const votes = {};
 
-  // ספירת קולות
+  // איפוס קולות לכל שחקן
+  playersMap.forEach(p => {
+    votes[p.name] = 0;
+  });
+
+  // ספירת הקולות שנרשמו
   playersMap.forEach(p => {
     if (p.currentVote) {
       votes[p.currentVote] = (votes[p.currentVote] || 0) + 1;
     }
   });
 
+  // מציאת כמות הקולות המקסימלית
   let maxVotes = 0;
   for (const count of Object.values(votes)) {
     if (count > maxVotes) {
@@ -204,7 +210,7 @@ function calculateResults() {
     }
   }
 
-  // מציאת כל השחקנים שקיבלו את מספר הקולות המרבי
+  // בדיקה מי הגיע לסיבוב הראשון/העליון
   const topVotedPlayers = [];
   if (maxVotes > 0) {
     for (const [candidate, count] of Object.entries(votes)) {
@@ -214,41 +220,34 @@ function calculateResults() {
     }
   }
 
-  const isTie = topVotedPlayers.length > 1 || topVotedPlayers.length === 0;
-  const singleWinner = isTie ? null : topVotedPlayers[0];
+  const isTie = topVotedPlayers.length !== 1;
+  const winnerName = isTie ? null : topVotedPlayers[0];
 
   // חישוב ניקוד
   playersMap.forEach(p => {
     const votedForSelf = (p.currentVote === p.name);
 
     if (!isTie) {
-      // יש מנצח ברור
-      if (p.currentVote === singleWinner) {
-        if (votedForSelf) {
-          p.score += 2; // בחר בעצמו והיה הרוב
-        } else {
-          p.score += 1; // בחר ברוב
-        }
+      // מקרה 1: יש מנצח יחיד ברוב קולות
+      if (p.currentVote === winnerName) {
+        p.score += votedForSelf ? 2 : 1; // 2 נקודות אם בחר בעצמו, 1 אם בחר במישהו אחר
       } else if (votedForSelf) {
-        p.score = Math.max(0, p.score - 1); // בחר בעצמו כשהיה מנצח אחר
+        p.score = Math.max(0, p.score - 1); // מפחיתים נקודה אם בחר בעצמו כשהיה מנצח אחר
       }
     } else {
-      // יש תיקו בצמרת
-      // ענישה על בחירה עצמית: יורדת נקודה רק אם הבחירה העצמית אפילו לא הייתה בתוך התיקו של הצמרת
+      // מקרה 2: יש תיקו בצמרת (אין מנצח יחיד)
+      // אם בחר בעצמו והוא אפילו לא חלק מהתיקו – מורידים נקודה
       if (votedForSelf && !topVotedPlayers.includes(p.name)) {
         p.score = Math.max(0, p.score - 1);
       }
     }
   });
 
-  const displayWinnerText = isTie 
-    ? `תיקו! (${topVotedPlayers.join(' ו-')}) - אין רוב קולות` 
-    : singleWinner;
-
   io.emit('show_results', {
-    winningVote: displayWinnerText,
+    winningVote: winnerName,
+    isTie: isTie,
     votesCount: votes,
-    players: getPlayersList()
+    playersList: getPlayersList()
   });
 
   currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
