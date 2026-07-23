@@ -10,6 +10,10 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
+// 🎯 הגדרות סיום המשחק המעודכנות
+const TARGET_SCORE = 15;  // 15 נקודות לניצחון
+const MAX_QUESTIONS = 25; // 25 סיבובים מקסימום
+
 const rawQuestions = [
   "למי הכי מתאים ליזום שיחה עם אדם זר באוטובוס?",
   "מי הראשון שיעשה אקזיט?",
@@ -40,77 +44,7 @@ const rawQuestions = [
   "מי הכי סביר שיכנס לחדר וישכח למה הוא נכנס?",
   "מי הכי סביר שיאבד את הדרכון שלו יום לפני טיסה?",
   "מי הכי סביר שישתתף בתוכנית ריאליטי?",
-  "מי הכי סביר שיחפש את המשקפיים/הטלפון כשהם כבר ביד שלו?",
-  "מי הכי סביר שימצא דרך להתחמק מתשלום על כבודה במטוס?",
-  "מי הכי סביר שיירדם על הספה ויקום עם גב תפוס?",
-  "מי הכי סביר שיעשה פדיחה בפגישה רשמית?",
-  "מי הכי סביר שיתחיל פרויקט DIY בבית ולא יסיים אותו לעולם?",
-  "מי הכי סביר שיקנה ציוד ספורט יקר וישתמש בו פעם אחת?",
-  "מי הכי סביר שישרוף את החביתה בבוקר?",
-  "מי הכי סביר שינסה לתקן משהו בבית ויעשה יותר נזק?",
-  "מי הכי סביר שיציע נישואין במקום הכי לא צפוי?",
-  "מי הכי סביר שישלח הודעה קולית של 5 דקות?",
-  "מי הכי סביר שיענה להודעה בווטסאפ אחרי 3 ימים?",
-  "מי הכי סביר שישחק במשחק מחשב/טלפון עד 4 לפנות בוקר?",
-  "מי הכי סביר שימציא תירוץ מצוץ מהאצבע כדי לא לצאת מהבית?",
-  "מי הכי סביר שיתחבר לאנשים זרים לחלוטין בתור בסופר?",
-  "מי הכי סביר שיאכל חריף מדי ויסבול בשקט?",
-  "מי הכי סביר שיציע רעיון למודל עסקי גאוני אבל לא יעשה איתו כלום?",
-  "מי הכי סביר שישמור קבלות משנת 2015 'ליתר ביטחון'?",
-  "מי הכי סביר שישכח איפה הוא שם את השלט של הטלוויזיה?",
-  "מי הכי סביר שיתחיל ללמוד שפה חדשה ויפסיק אחרי יומיים?",
-  "מי הכי סביר שיתלונן שהקר בחדר כשכולם מזיעים?",
-  "מי הכי סביר שיתלונן שחם בחדר כשכולם קופאים?",
-  "מי הכי סביר שיתנדב ראשון למשימה מביכה?",
-  "מי הכי סביר שיצליח למכור הקרח לאסקימוסים?",
-  "מי הכי סביר שיקרוס מצחוק ברגע הכי לא מתאים?",
-  "מי הכי סביר שיזמין פיצה ויאכל את כולה לבד?",
-  "מי הכי סביר שישכח לשים מלח באוכל שהוא בישל?",
-  "מי הכי סביר שישים יותר מדי פלפל באוכל?",
-  "מי הכי סביר שיהיה הנהג התורן בכל אירוע?",
-  "מי הכי סביר שיתקע בלי דלק באמצע הכביש המהיר?",
-  "מי הכי סביר שיקנה ספר עיון עבה ולא יפתח אותו לעולם?",
-  "מי הכי סביר שידע את כל המילים של שיר ישן בעל פה?",
-  "מי הכי סביר שיזייף בריצה קלה בפארק?",
-  "מי הכי סביר שיציע ללכת ברגל במקום לקחת מונית?",
-  "מי הכי סביר שישתמש בתירוץ 'הייתה לי תנועה' כשהוא רק קם מהמיטה?",
-  "מי הכי סביר שיארגן מסיבת הפתעה למישהו אחר?",
-  "מי הכי סביר שיגלה את הסוד של מסיבת ההפתעה בטעות?",
-  "מי הכי סביר שינסה להציל חיית רחוב ויביא אותה הביתה?",
-  "מי הכי סביר שישבור צלחת במהלך ארוחה משפחתית?",
-  "מי הכי סביר שיקרא את הוראות ההפעלה מהתחלה ועד הסוף?",
-  "מי הכי סביר שירכיב רהיט של איקאה בלי להסתכל בהוראות בכלל?",
-  "מי הכי סביר שיביא איתו ערכת עזרה ראשונה לכל טיול קטן?",
-  "מי הכי סביר שישכח לארוז תחתונים או גרביים לטיול בחו\"ל?",
-  "מי הכי סביר שיתחיל להסביר לכולם על נושא מוזר שהוא קרא עליו בוויקיפדיה?",
-  "מי הכי סביר שישתף פוסט פייק ניוז בפייסבוק או בווטסאפ?",
-  "מי הכי סביר שיציע משחק קופסה בערב שישי?",
-  "מי הכי סביר שיתעצבן מלהפסיד במשחק קופסה?",
-  "מי הכי סביר שיפיל את הטלוויזיה/השולחן מרוב התלהבות?",
-  "מי הכי סביר שיצלם 50 תמונות של אותו הנוף בדיוק?",
-  "מי הכי סביר שיוציא את הטלפון באמצע הופעה ויצלם את הכל?",
-  "מי הכי סביר שישאל 'מתי מגיעים?' אחרי 10 דקות נסיעה?",
-  "מי הכי סביר שיקח ביס מהצלחת של מישהו אחר בלי לבקש?",
-  "מי הכי סביר שיתחילו איתו ברחוב באמצע היום?",
-  "מי הכי סביר שיגיב לכל סטורי באינסטגרם?",
-  "מי הכי סביר שיפתח קבוצת ווטסאפ חדשה לכל אירוע קטן?",
-  "מי הכי סביר שיצא מהקבוצה בלי להגיד מילה?",
-  "מי הכי סביר שיתבלבל בין ימין לשמאל כשהוא נותן הנחיות נסיעה?",
-  "מי הכי סביר שיתחיל לשיר בקול רם באמצע סופרמרקט?",
-  "מי הכי סביר שיבלה חצי שעה בבחירת סרט בנטפליקס ואז יירדם?",
-  "מי הכי סביר שיקנה בגד, לא ילבש אותו שנה, ואז יתרום אותו?",
-  "מי הכי סביר שידע איך לפתור קובייה הונגרית?",
-  "מי הכי סביר שיתבלבל בשם של מישהו שהוא מכיר שנים?",
-  "מי הכי סביר שיגיע לבית הספר/עבודה עם חולצה הפוכה?",
-  "מי הכי סביר שינהל שיחה שלמה עם חתול או כלב ברחוב?",
-  "מי הכי סביר שישכח איפה הוא שם את המשקפיים כשהם על המצח שלו?",
-  "מי הכי סביר שיסביר משהו בביטחון מוחלט ויגלה שהוא טעה לחלוטין?",
-  "מי הכי סביר שיקפוץ למים קפואים ראשון?",
-  "מי הכי סביר שישלם על כולם במסעדה בספונטניות?",
-  "מי הכי סביר שיחשב את הטיפ במסעדה עד לרמת האגורה?",
-  "מי הכי סביר שימצא כסף על הרצפה ברחוב?",
-  "מי הכי סביר שינסה להרים משהו כבד מדי וימתח שריר?",
-  "מי הכי סביר לנצח במשחק הזה?"
+  "מי הכי סביר שיחפש את המשקפיים/הטלפון כשהם כבר ביד שלו?"
 ];
 
 const questions = rawQuestions.map((qText, index) => ({
@@ -122,6 +56,7 @@ const questions = rawQuestions.map((qText, index) => ({
 let playersMap = new Map();
 let nextPlayerNumber = 1;
 let currentQuestionIndex = 0;
+let questionsPlayed = 0;
 
 function getPlayersList() {
   return Array.from(playersMap.values())
@@ -155,10 +90,12 @@ io.on('connection', (socket) => {
     playersMap.forEach(p => p.currentVote = null);
 
     const q = questions[currentQuestionIndex];
+    questionsPlayed++;
+
     io.emit('new_question', {
       question: q,
-      qIndex: currentQuestionIndex + 1,
-      total: questions.length,
+      qIndex: questionsPlayed,
+      total: MAX_QUESTIONS,
       players: getPlayersList()
     });
   });
@@ -181,6 +118,25 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('restart_game', () => {
+    playersMap.forEach(p => {
+      p.score = 0;
+      p.currentVote = null;
+    });
+    currentQuestionIndex = 0;
+    questionsPlayed = 0;
+    io.emit('update_players', getPlayersList());
+    
+    const q = questions[currentQuestionIndex];
+    questionsPlayed++;
+    io.emit('new_question', {
+      question: q,
+      qIndex: questionsPlayed,
+      total: MAX_QUESTIONS,
+      players: getPlayersList()
+    });
+  });
+
   socket.on('disconnect', () => {
     playersMap.delete(socket.id);
     io.emit('update_players', getPlayersList());
@@ -190,67 +146,64 @@ io.on('connection', (socket) => {
 function calculateResults() {
   const votes = {};
 
-  // איפוס קולות לכל שחקן
-  playersMap.forEach(p => {
-    votes[p.name] = 0;
-  });
-
-  // ספירת הקולות שנרשמו
+  playersMap.forEach(p => { votes[p.name] = 0; });
   playersMap.forEach(p => {
     if (p.currentVote) {
       votes[p.currentVote] = (votes[p.currentVote] || 0) + 1;
     }
   });
 
-  // מציאת כמות הקולות המקסימלית
   let maxVotes = 0;
   for (const count of Object.values(votes)) {
-    if (count > maxVotes) {
-      maxVotes = count;
-    }
+    if (count > maxVotes) maxVotes = count;
   }
 
-  // בדיקה מי הגיע לסיבוב הראשון/העליון
   const topVotedPlayers = [];
   if (maxVotes > 0) {
     for (const [candidate, count] of Object.entries(votes)) {
-      if (count === maxVotes) {
-        topVotedPlayers.push(candidate);
-      }
+      if (count === maxVotes) topVotedPlayers.push(candidate);
     }
   }
 
   const isTie = topVotedPlayers.length !== 1;
   const winnerName = isTie ? null : topVotedPlayers[0];
 
-  // חישוב ניקוד
   playersMap.forEach(p => {
     const votedForSelf = (p.currentVote === p.name);
 
     if (!isTie) {
-      // מקרה 1: יש מנצח יחיד ברוב קולות
       if (p.currentVote === winnerName) {
-        p.score += votedForSelf ? 2 : 1; // 2 נקודות אם בחר בעצמו, 1 אם בחר במישהו אחר
+        p.score += votedForSelf ? 2 : 1;
       } else if (votedForSelf) {
-        p.score = Math.max(0, p.score - 1); // מפחיתים נקודה אם בחר בעצמו כשהיה מנצח אחר
+        p.score = Math.max(0, p.score - 1);
       }
     } else {
-      // מקרה 2: יש תיקו בצמרת (אין מנצח יחיד)
-      // אם בחר בעצמו והוא אפילו לא חלק מהתיקו – מורידים נקודה
       if (votedForSelf && !topVotedPlayers.includes(p.name)) {
         p.score = Math.max(0, p.score - 1);
       }
     }
   });
 
-  io.emit('show_results', {
-    winningVote: winnerName,
-    isTie: isTie,
-    votesCount: votes,
-    playersList: getPlayersList()
-  });
+  const playersList = getPlayersList();
+  const topPlayer = playersList[0];
 
-  currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
+  // בדיקת תנאי סיום (15 נקודות או 25 שאלות)
+  const isGameOver = (topPlayer && topPlayer.score >= TARGET_SCORE) || questionsPlayed >= MAX_QUESTIONS;
+
+  if (isGameOver) {
+    io.emit('game_over', {
+      winner: topPlayer,
+      playersList: playersList
+    });
+  } else {
+    io.emit('show_results', {
+      winningVote: winnerName,
+      isTie: isTie,
+      votesCount: votes,
+      playersList: playersList
+    });
+    currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
+  }
 }
 
 const PORT = process.env.PORT || 10000;
