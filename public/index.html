@@ -3,178 +3,249 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ברוב קולות!</title>
+  <title>משחק החבר'ה</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { background: #f4f6f8; margin: 0; padding: 15px; display: flex; justify-content: center; }
-    .container { width: 100%; max-width: 480px; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }
-    h1 { color: #2c3e50; margin-bottom: 5px; }
-    .player-badge { display: inline-block; background: #e3f2fd; color: #0d47a1; padding: 8px 16px; border-radius: 20px; font-weight: bold; margin-bottom: 15px; font-size: 18px; }
-    input[type="text"] { width: 100%; padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 12px; text-align: center; }
-    button { width: 100%; background: #3498db; color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; margin-top: 8px; }
-    button:disabled { background: #bdc3c7; }
-    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
-    .btn-option { background: #2ecc71; font-size: 16px; padding: 15px 5px; color: white; border-radius: 8px; border: none; font-weight: bold; }
-    .players-list { text-align: right; background: #fafafa; padding: 12px 15px; border-radius: 10px; border: 1px solid #eee; margin-top: 15px; }
-    .player-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 16px; }
-    .player-item:last-child { border-bottom: none; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f0f2f5; color: #333; padding-bottom: 20px; }
+    
+    /* סרגל קבוע בחלק העליון בנייד */
+    .top-bar {
+      position: sticky;
+      top: 0;
+      background: #2c3e50;
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      z-index: 1000;
+    }
+    .user-badge { background: #27ae60; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.9em; }
+    
+    .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+    
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    h1, h2 { text-align: center; color: #2c3e50; margin-bottom: 15px; }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      width: 100%;
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    button:active { background: #2980b9; }
+
+    /* כפתורי בחירת שחקן */
+    .player-btn {
+      background: #ecf0f1;
+      color: #2c3e50;
+      border: 2px solid #bdc3c7;
+      margin-bottom: 8px;
+      text-align: right;
+      padding: 14px;
+    }
+    .player-btn.selected { background: #e74c3c; color: white; border-color: #c0392b; }
+
+    /* טבלת ניקוד קבועה */
+    .scoreboard-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    .scoreboard-table th, .scoreboard-table td {
+      padding: 10px;
+      text-align: center;
+      border-bottom: 1px solid #eee;
+    }
+    .scoreboard-table th { background: #f8f9fa; color: #7f8c8d; font-size: 0.85em; }
+    .scoreboard-table tr.me { background: #e8f8f5; font-weight: bold; }
+
+    .question-text { font-size: 1.25em; font-weight: bold; text-align: center; margin: 15px 0; color: #2c3e50; }
     .hidden { display: none !important; }
-    .status-msg { margin-top: 15px; font-weight: bold; color: #e67e22; font-size: 18px; }
   </style>
 </head>
 <body>
 
+  <!-- סרגל עליון קבוע -->
+  <div id="topBar" class="top-bar hidden">
+    <span>🎮 משחק החבר'ה</span>
+    <span class="user-badge" id="myBadge">את/ה: -</span>
+  </div>
+
   <div class="container">
     
-    <!-- מסך 1: כניסה -->
-    <div id="login-screen">
-      <h1>🗳️ ברוב קולות</h1>
-      <p>הכנס את השם שלך להצטרפות:</p>
-      <input type="text" id="username-input" placeholder="שם מלא / כינוי">
+    <!-- מסך כניסה -->
+    <div id="loginCard" class="card">
+      <h2>הצטרפות למשחק</h2>
+      <input type="text" id="nameInput" placeholder="הכנס את שמך..." maxlength="15">
       <button onclick="joinGame()">הכנס למשחק</button>
     </div>
 
-    <!-- מסך 2: הלובי -->
-    <div id="lobby-screen" class="hidden">
-      <h1>חדר הרישום</h1>
-      <div id="my-badge" class="player-badge"></div>
-      
-      <div class="players-list">
-        <h3>שחקנים מחוברים בחדר:</h3>
-        <div id="lobby-players"></div>
-      </div>
-
-      <button onclick="startGame()" style="background:#8e44ad; margin-top:20px; font-size:18px;">התחל משחק 🚀</button>
+    <!-- לובי / חדר המתנה -->
+    <div id="lobbyCard" class="card hidden">
+      <h2>חדר המתנה</h2>
+      <p style="text-align:center; color:#7f8c8d; margin-bottom:15px;">המתן לתחילת המשחק...</p>
+      <button onclick="startGame()">התחל משחק (לכולם)</button>
     </div>
 
-    <!-- מסך 3: שאלה -->
-    <div id="game-screen" class="hidden">
-      <div id="q-counter" style="color:#7f8c8d; font-weight:bold;"></div>
-      <h2 id="q-text" style="margin:15px 0; color:#2c3e50;"></h2>
-
-      <div id="options-container" class="btn-grid"></div>
-      <div id="vote-status" class="status-msg"></div>
-
-      <div class="players-list" style="margin-top:20px;">
-        <h4>מצב הצבעות בחדר:</h4>
-        <div id="game-players-status"></div>
-      </div>
+    <!-- מסך שאלה פעיל -->
+    <div id="gameCard" class="card hidden">
+      <div style="text-align: center; color: #7f8c8d; font-size: 0.9em;" id="questionNum">שאלה</div>
+      <div class="question-text" id="questionText">טוען שאלה...</div>
+      <div id="optionsContainer"></div>
+      <div id="voteStatus" style="text-align:center; margin-top:10px; color:#e67e22; font-weight:bold;"></div>
     </div>
 
-    <!-- מסך 4: תוצאות -->
-    <div id="results-screen" class="hidden">
-      <h1>🏆 התוצאות!</h1>
-      <h2 id="winning-result" style="color:#27ae60;"></h2>
-      
-      <div class="players-list">
-        <h3>לוח ניקוד:</h3>
-        <div id="leaderboard"></div>
-      </div>
+    <!-- מסך תוצאות סיבוב -->
+    <div id="resultsCard" class="card hidden">
+      <h2>תוצאות הסיבוב</h2>
+      <p style="text-align:center; font-size:1.1em;" id="winnerText"></p>
+      <button onclick="nextQuestion()">לשאלה הבאה ➔</button>
+    </div>
 
-      <button onclick="startGame()" style="background:#8e44ad; margin-top:20px;">לשאלה הבאה ➡️</button>
+    <!-- טבלת ניקוד קבועה (מופיעה תמיד בזמן המשחק) -->
+    <div id="scoreboardCard" class="card hidden">
+      <h3 style="margin-bottom:10px; font-size:1em; color:#7f8c8d;">🏆 טבלת מובילים בזמן אמת</h3>
+      <table class="scoreboard-table">
+        <thead>
+          <tr>
+            <th>מיקום</th>
+            <th>שם</th>
+            <th>ניקוד</th>
+          </tr>
+        </thead>
+        <tbody id="scoreboardBody">
+        </tbody>
+      </table>
     </div>
 
   </div>
 
   <script>
     const socket = io();
+    let myName = '';
+    let selectedVote = null;
 
     function joinGame() {
-      const name = document.getElementById('username-input').value.trim();
-      if (!name) return alert('נא להזין שם!');
-      socket.emit('join_game', name);
-      showScreen('lobby-screen');
+      const name = document.getElementById('nameInput').value.trim();
+      if (!name) return alert('נא להזין שם');
+      
+      myName = name;
+      document.getElementById('myBadge').innerText = 'את/ה: ' + myName;
+      document.getElementById('topBar').classList.remove('hidden');
+      
+      socket.emit('join_game', myName);
+      
+      document.getElementById('loginCard').classList.add('hidden');
+      document.getElementById('lobbyCard').classList.remove('hidden');
+      document.getElementById('scoreboardCard').classList.remove('hidden');
     }
 
     function startGame() {
       socket.emit('next_question');
     }
 
-    function castVote(val) {
-      socket.emit('submit_vote', val);
-      document.getElementById('vote-status').innerText = 'הצבעתך נקלטה! ממתין לשאר המשתתפים...';
-      
-      const btns = document.querySelectorAll('#options-container button');
-      btns.forEach(b => b.disabled = true);
+    function nextQuestion() {
+      socket.emit('next_question');
     }
 
-    function showScreen(id) {
-      ['login-screen', 'lobby-screen', 'game-screen', 'results-screen'].forEach(s => {
-        document.getElementById(s).classList.add('hidden');
-      });
-      document.getElementById(id).classList.remove('hidden');
-    }
-
-    // קבלת רשימת השחקנים מהשרת
-    socket.on('update_players', (playersList) => {
-      // עדכון התג שלי
-      const me = playersList.find(p => p.id === socket.id);
-      if (me) {
-        document.getElementById('my-badge').innerText = `#${me.number} ${me.name}`;
-      }
-
-      // רשימת הלובי
-      const lobbyDiv = document.getElementById('lobby-players');
-      if (playersList.length === 0) {
-        lobbyDiv.innerHTML = '<em>אין עוד שחקנים בחדר...</em>';
-      } else {
-        lobbyDiv.innerHTML = playersList.map(p => 
-          `<div class="player-item">
-            <span><strong>#${p.number}</strong> ${p.name}</span>
-            <span>${p.score} נק'</span>
-          </div>`
-        ).join('');
-      }
-
-      // רשימת סטטוס הצבעה בזמן שאלה
-      const statusDiv = document.getElementById('game-players-status');
-      if (statusDiv) {
-        statusDiv.innerHTML = playersList.map(p => 
-          `<div class="player-item">
-            <span><strong>#${p.number}</strong> ${p.name}</span>
-            <span>${p.hasVoted ? '✅ הצביע' : '⏳ ממתין'}</span>
-          </div>`
-        ).join('');
-      }
+    // עדכון רשימת שחקנים שטבלת ניקוד
+    socket.on('update_players', (players) => {
+      renderScoreboard(players);
     });
 
+    // קבלת שאלה חדשה
     socket.on('new_question', (data) => {
-      showScreen('game-screen');
-      document.getElementById('q-counter').innerText = `שאלה ${data.qIndex} מתוך ${data.total}`;
-      document.getElementById('q-text').innerText = data.question.text;
-      document.getElementById('vote-status').innerText = '';
+      selectedVote = null;
+      document.getElementById('lobbyCard').classList.add('hidden');
+      document.getElementById('resultsCard').classList.add('hidden');
+      document.getElementById('gameCard').classList.remove('hidden');
 
-      const container = document.getElementById('options-container');
+      document.getElementById('questionNum').innerText = `שאלה ${data.qIndex} מתוך ${data.total}`;
+      document.getElementById('questionText').innerText = data.question.text;
+      document.getElementById('voteStatus').innerText = '';
+
+      // יצירת כפתורי בחירה מתוך השחקנים
+      const container = document.getElementById('optionsContainer');
       container.innerHTML = '';
 
-      if (data.question.type === 'PLAYER_SELECT') {
-        data.players.forEach(p => {
-          container.innerHTML += `<button class="btn-option" onclick="castVote('#${p.number} ${p.name}')">#${p.number} ${p.name}</button>`;
-        });
-      } else if (data.question.type === 'CHOICE') {
-        data.question.options.forEach(opt => {
-          container.innerHTML += `<button class="btn-option" onclick="castVote('${opt}')">${opt}</button>`;
-        });
-      }
+      data.players.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'player-btn';
+        btn.innerText = p.name + (p.name === myName ? ' (את/ה)' : '');
+        btn.onclick = () => submitVote(p.name, btn);
+        container.appendChild(btn);
+      });
+
+      renderScoreboard(data.players);
     });
+
+    function submitVote(votedName, btnElement) {
+      selectedVote = votedName;
+      
+      // סימון ויזואלי של הכפתור שנבחר
+      document.querySelectorAll('.player-btn').forEach(b => b.classList.remove('selected'));
+      btnElement.classList.add('selected');
+
+      socket.emit('submit_vote', votedName);
+      document.getElementById('voteStatus').innerText = 'הצבעתך נקלטה! ממתינים לשאר...';
+    }
 
     socket.on('vote_progress', (data) => {
-      document.getElementById('vote-status').innerText = `הצביעו ${data.votedCount} מתוך ${data.total}`;
+      document.getElementById('voteStatus').innerText = `הצביעו ${data.votedCount} מתוך ${data.total} שחקנים`;
     });
 
+    // הצגת תוצאות סיבוב
     socket.on('show_results', (data) => {
-      showScreen('results-screen');
-      document.getElementById('winning-result').innerText = `תשובת הרוב: ${data.winningVote}`;
+      document.getElementById('gameCard').classList.add('hidden');
+      document.getElementById('resultsCard').classList.remove('hidden');
 
-      const board = document.getElementById('leaderboard');
-      board.innerHTML = data.players.sort((a,b) => b.score - a.score).map(p => 
-        `<div class="player-item">
-          <span><strong>#${p.number}</strong> ${p.name}</span>
-          <span><strong>${p.score}</strong> נקודות</span>
-        </div>`
-      ).join('');
+      document.getElementById('winnerText').innerHTML = `הרוב בחרו ב: <strong style="color:#27ae60; font-size:1.3em;">${data.winningVote}</strong>`;
+      
+      renderScoreboard(data.players);
     });
+
+    // רינדור טבלת ניקוד קבועה
+    function renderScoreboard(players) {
+      const tbody = document.getElementById('scoreboardBody');
+      tbody.innerHTML = '';
+
+      players.forEach((p, index) => {
+        const tr = document.createElement('tr');
+        if (p.name === myName) tr.className = 'me';
+
+        tr.innerHTML = `
+          <td>${index + 1}</td>
+          <td>${p.name} ${p.name === myName ? '👤' : ''}</td>
+          <td><strong>${p.score}</strong></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
   </script>
 </body>
 </html>
