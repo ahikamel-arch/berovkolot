@@ -9,7 +9,6 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #f0f2f5; color: #333; padding-bottom: 20px; }
     
-    /* סרגל קבוע בחלק העליון בנייד */
     .top-bar {
       position: sticky;
       top: 0;
@@ -34,7 +33,7 @@
       box-shadow: 0 2px 6px rgba(0,0,0,0.08);
     }
 
-    h1, h2 { text-align: center; color: #2c3e50; margin-bottom: 15px; }
+    h1, h2, h3 { text-align: center; color: #2c3e50; margin-bottom: 15px; }
     
     input[type="text"] {
       width: 100%;
@@ -59,7 +58,6 @@
     }
     button:active { background: #2980b9; }
 
-    /* כפתורי בחירת שחקן */
     .player-btn {
       background: #ecf0f1;
       color: #2c3e50;
@@ -70,7 +68,21 @@
     }
     .player-btn.selected { background: #e74c3c; color: white; border-color: #c0392b; }
 
-    /* טבלת ניקוד קבועה */
+    /* רשימת תוצאות ההצבעה */
+    .votes-list {
+      list-style: none;
+      margin: 15px 0;
+      padding: 0;
+    }
+    .votes-list li {
+      padding: 10px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      font-size: 1.1em;
+    }
+    .votes-list li:first-child { font-weight: bold; background: #f8f9fa; }
+
     .scoreboard-table {
       width: 100%;
       border-collapse: collapse;
@@ -90,7 +102,6 @@
 </head>
 <body>
 
-  <!-- סרגל עליון קבוע -->
   <div id="topBar" class="top-bar hidden">
     <span>🎮 משחק החבר'ה</span>
     <span class="user-badge" id="myBadge">את/ה: -</span>
@@ -98,21 +109,18 @@
 
   <div class="container">
     
-    <!-- מסך כניסה -->
     <div id="loginCard" class="card">
       <h2>הצטרפות למשחק</h2>
       <input type="text" id="nameInput" placeholder="הכנס את שמך..." maxlength="15">
       <button onclick="joinGame()">הכנס למשחק</button>
     </div>
 
-    <!-- לובי / חדר המתנה -->
     <div id="lobbyCard" class="card hidden">
       <h2>חדר המתנה</h2>
       <p style="text-align:center; color:#7f8c8d; margin-bottom:15px;">המתן לתחילת המשחק...</p>
       <button onclick="startGame()">התחל משחק (לכולם)</button>
     </div>
 
-    <!-- מסך שאלה פעיל -->
     <div id="gameCard" class="card hidden">
       <div style="text-align: center; color: #7f8c8d; font-size: 0.9em;" id="questionNum">שאלה</div>
       <div class="question-text" id="questionText">טוען שאלה...</div>
@@ -120,14 +128,15 @@
       <div id="voteStatus" style="text-align:center; margin-top:10px; color:#e67e22; font-weight:bold;"></div>
     </div>
 
-    <!-- מסך תוצאות סיבוב -->
     <div id="resultsCard" class="card hidden">
-      <h2>תוצאות הסיבוב</h2>
+      <h2>תוצאות ההצבעה</h2>
       <p style="text-align:center; font-size:1.1em;" id="winnerText"></p>
+      
+      <ul class="votes-list" id="votesBreakdown"></ul>
+
       <button onclick="nextQuestion()">לשאלה הבאה ➔</button>
     </div>
 
-    <!-- טבלת ניקוד קבועה (מופיעה תמיד בזמן המשחק) -->
     <div id="scoreboardCard" class="card hidden">
       <h3 style="margin-bottom:10px; font-size:1em; color:#7f8c8d;">🏆 טבלת מובילים בזמן אמת</h3>
       <table class="scoreboard-table">
@@ -135,7 +144,7 @@
           <tr>
             <th>מיקום</th>
             <th>שם</th>
-            <th>ניקוד</th>
+            <th>ניקוד מצטבר</th>
           </tr>
         </thead>
         <tbody id="scoreboardBody">
@@ -148,7 +157,6 @@
   <script>
     const socket = io();
     let myName = '';
-    let selectedVote = null;
 
     function joinGame() {
       const name = document.getElementById('nameInput').value.trim();
@@ -165,22 +173,14 @@
       document.getElementById('scoreboardCard').classList.remove('hidden');
     }
 
-    function startGame() {
-      socket.emit('next_question');
-    }
+    function startGame() { socket.emit('next_question'); }
+    function nextQuestion() { socket.emit('next_question'); }
 
-    function nextQuestion() {
-      socket.emit('next_question');
-    }
-
-    // עדכון רשימת שחקנים שטבלת ניקוד
     socket.on('update_players', (players) => {
       renderScoreboard(players);
     });
 
-    // קבלת שאלה חדשה
     socket.on('new_question', (data) => {
-      selectedVote = null;
       document.getElementById('lobbyCard').classList.add('hidden');
       document.getElementById('resultsCard').classList.add('hidden');
       document.getElementById('gameCard').classList.remove('hidden');
@@ -189,7 +189,6 @@
       document.getElementById('questionText').innerText = data.question.text;
       document.getElementById('voteStatus').innerText = '';
 
-      // יצירת כפתורי בחירה מתוך השחקנים
       const container = document.getElementById('optionsContainer');
       container.innerHTML = '';
 
@@ -205,9 +204,6 @@
     });
 
     function submitVote(votedName, btnElement) {
-      selectedVote = votedName;
-      
-      // סימון ויזואלי של הכפתור שנבחר
       document.querySelectorAll('.player-btn').forEach(b => b.classList.remove('selected'));
       btnElement.classList.add('selected');
 
@@ -219,17 +215,30 @@
       document.getElementById('voteStatus').innerText = `הצביעו ${data.votedCount} מתוך ${data.total} שחקנים`;
     });
 
-    // הצגת תוצאות סיבוב
     socket.on('show_results', (data) => {
       document.getElementById('gameCard').classList.add('hidden');
       document.getElementById('resultsCard').classList.remove('hidden');
 
-      document.getElementById('winnerText').innerHTML = `הרוב בחרו ב: <strong style="color:#27ae60; font-size:1.3em;">${data.winningVote}</strong>`;
+      if (data.isTie) {
+        document.getElementById('winnerText').innerHTML = `<span style="color:#e74c3c; font-weight:bold;">תיקו! אין רוב קולות ברור.</span>`;
+      } else {
+        document.getElementById('winnerText').innerHTML = `הרוב בחרו ב: <strong style="color:#27ae60; font-size:1.3em;">${data.winningVote}</strong>`;
+      }
+
+      // פירוט הקולות לכל שחקן
+      const votesList = document.getElementById('votesBreakdown');
+      votesList.innerHTML = '';
       
-      renderScoreboard(data.players);
+      data.playersList.forEach(p => {
+        const count = data.votesCount[p.name] || 0;
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${p.name}</span> <span><strong>${count}</strong> קולות</span>`;
+        votesList.appendChild(li);
+      });
+
+      renderScoreboard(data.playersList);
     });
 
-    // רינדור טבלת ניקוד קבועה
     function renderScoreboard(players) {
       const tbody = document.getElementById('scoreboardBody');
       tbody.innerHTML = '';
