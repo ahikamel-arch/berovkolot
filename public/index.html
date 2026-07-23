@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ברוב קולות - המשחק</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; text-align: center; padding: 20px; background: #f0f2f5; }
+    .card { background: white; border-radius: 12px; padding: 20px; margin: 10px auto; max-width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    button { background: #007bff; color: white; border: none; padding: 12px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; margin: 5px; width: 100%; }
+    button:disabled { background: #ccc; }
+    input { padding: 10px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; width: 80%; margin-bottom: 10px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+  <!-- מסך 1: התחברות -->
+  <div id="login-screen" class="card">
+    <h2>ברוב קולות! 🗳️</h2>
+    <input type="text" id="username" placeholder="הכנס את השם שלך">
+    <button onclick="joinGame()">הכנס למשחק</button>
+  </div>
+
+  <!-- מסך 2: הול (Lobby) -->
+  <div id="lobby-screen" class="card hidden">
+    <h3>מחכים למשתתפים...</h3>
+    <ul id="players-list" style="list-style:none; padding:0;"></ul>
+    <button onclick="startGame()" id="host-start-btn">התחל משחק (מנחה)</button>
+  </div>
+
+  <!-- מסך 3: שאלה והצבעה -->
+  <div id="game-screen" class="card hidden">
+    <h3 id="question-text">שאלה נטענת...</h3>
+    <div id="options-container"></div>
+    <p id="vote-status"></p>
+  </div>
+
+  <!-- מסך 4: תוצאות -->
+  <div id="results-screen" class="card hidden">
+    <h2>התוצאות! 🏆</h2>
+    <h3 id="winner-text"></h3>
+    <div id="leaderboard"></div>
+    <button onclick="nextQuestion()" id="host-next-btn">לשאלה הבאה</button>
+  </div>
+
+  <script>
+    const socket = io();
+    let myName = '';
+
+    function joinGame() {
+      myName = document.getElementById('username').value.trim();
+      if (!myName) return alert('נא להזין שם');
+      socket.emit('join_game', myName);
+      showScreen('lobby-screen');
+    }
+
+    function startGame() {
+      socket.emit('next_question');
+    }
+
+    function nextQuestion() {
+      socket.emit('next_question');
+    }
+
+    function sendVote(vote) {
+      socket.emit('submit_vote', vote);
+      document.getElementById('vote-status').innerText = 'הצבעתך נקלטה! ממתינים לשאר המשתתפים...';
+      document.querySelectorAll('#options-container button').forEach(b => b.disabled = true);
+    }
+
+    function showScreen(id) {
+      ['login-screen', 'lobby-screen', 'game-screen', 'results-screen'].forEach(s => {
+        document.getElementById(s).classList.add('hidden');
+      });
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    // מאזינים מהשרת
+    socket.on('update_players', (players) => {
+      const list = document.getElementById('players-list');
+      list.innerHTML = players.map(p => `<li>👤 ${p.name} (${p.score} נק')</li>`).join('');
+    });
+
+    socket.on('new_question', (data) => {
+      showScreen('game-screen');
+      document.getElementById('question-text').innerText = data.question.text;
+      document.getElementById('vote-status').innerText = '';
+      
+      const container = document.getElementById('options-container');
+      container.innerHTML = '';
+
+      // אם השאלה היא אמריקאית או בחירה מתוך רשימה
+      if (data.question.options) {
+        data.question.options.forEach(opt => {
+          container.innerHTML += `<button onclick="sendVote('${opt}')">${opt}</button>`;
+        });
+      } else {
+        // אם השאלה היא לבחור שחקן מהחדר
+        // ניקח את רשימת השחקנים מהשרת
+      }
+    });
+
+    socket.on('vote_progress', (data) => {
+      document.getElementById('vote-status').innerText = `הצביעו ${data.votedCount} מתוך ${data.totalPlayers}`;
+    });
+
+    socket.on('show_results', (data) => {
+      showScreen('results-screen');
+      document.getElementById('winner-text').innerText = `הרוב הניח ש: ${data.winningVote}`;
+      
+      const board = document.getElementById('leaderboard');
+      board.innerHTML = '<h4>טבלת מובילים:</h4>' + 
+        data.players.sort((a,b) => b.score - a.score)
+                    .map(p => `<p>${p.name}: ${p.score} נקודות</p>`).join('');
+    });
+  </script>
+</body>
+</html>
