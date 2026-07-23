@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ברוב קולות!</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: #f4f6f8; margin: 0; padding: 15px; display: flex; justify-content: center; }
+    .container { width: 100%; max-width: 480px; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }
+    h1 { color: #2c3e50; margin-bottom: 5px; }
+    .player-badge { display: inline-block; background: #eef2f5; padding: 6px 12px; border-radius: 20px; font-weight: bold; margin-bottom: 15px; }
+    input[type="text"] { width: 100%; padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 12px; }
+    button { width: 100%; background: #3498db; color: white; border: none; padding: 14px; font-size: 16px; font-weight: bold; border-radius: 10px; cursor: pointer; margin-top: 8px; transition: 0.2s; }
+    button:active { transform: scale(0.98); }
+    button:disabled { background: #bdc3c7; }
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+    .btn-option { background: #2ecc71; font-size: 15px; padding: 15px 5px; }
+    .players-list { text-align: right; background: #fafafa; padding: 10px 15px; border-radius: 10px; border: 1px solid #eee; margin-top: 15px; }
+    .player-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+    .player-item:last-child { border-bottom: none; }
+    .hidden { display: none !important; }
+    .status-msg { margin-top: 15px; font-weight: bold; color: #e67e22; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    
+    <!-- מסך 1: כניסה למשחק -->
+    <div id="login-screen">
+      <h1>🗳️ ברוב קולות</h1>
+      <p>הכנס את השם שלך כדי להצטרף לחדר</p>
+      <input type="text" id="username-input" placeholder="השם שלך...">
+      <button onclick="joinGame()">הכנס למשחק</button>
+    </div>
+
+    <!-- מסך 2: הלובי (ממתינים) -->
+    <div id="lobby-screen" class="hidden">
+      <h1>ממתינים למשתתפים...</h1>
+      <div id="my-badge" class="player-badge"></div>
+      
+      <div class="players-list">
+        <h3>משתתפים בחדר:</h3>
+        <div id="lobby-players"></div>
+      </div>
+
+      <button onclick="startGame()" style="background:#8e44ad; margin-top:20px;">התחל משחק (לכולם)</button>
+    </div>
+
+    <!-- מסך 3: שאלה והצבעה -->
+    <div id="game-screen" class="hidden">
+      <div id="q-counter" style="color:#7f8c8d; font-weight:bold;"></div>
+      <h2 id="q-text" style="margin:15px 0; color:#2c3e50;"></h2>
+
+      <div id="options-container" class="btn-grid"></div>
+      <div id="vote-status" class="status-msg"></div>
+
+      <div class="players-list" style="margin-top:20px;">
+        <h4>מצב הצבעות בחדר:</h4>
+        <div id="game-players-status"></div>
+      </div>
+    </div>
+
+    <!-- מסך 4: תוצאות -->
+    <div id="results-screen" class="hidden">
+      <h1>🏆 התוצאות!</h1>
+      <h2 id="winning-result" style="color:#27ae60;"></h2>
+      
+      <div class="players-list">
+        <h3>ניקוד נוכחי:</h3>
+        <div id="leaderboard"></div>
+      </div>
+
+      <button onclick="startGame()" style="background:#8e44ad; margin-top:20px;">לשאלה הבאה</button>
+    </div>
+
+  </div>
+
+  <script>
+    const socket = io();
+    let myNumber = null;
+
+    function joinGame() {
+      const name = document.getElementById('username-input').value.trim();
+      if (!name) return alert('נא להזין שם!');
+      socket.emit('join_game', name);
+      showScreen('lobby-screen');
+    }
+
+    function startGame() {
+      socket.emit('next_question');
+    }
+
+    function castVote(val) {
+      socket.emit('submit_vote', val);
+      document.getElementById('vote-status').innerText = 'הצבעתך נקלטה! ממתין לשאר...';
+      
+      const btns = document.querySelectorAll('#options-container button');
+      btns.forEach(b => b.disabled = true);
+    }
+
+    function showScreen(id) {
+      ['login-screen', 'lobby-screen', 'game-screen', 'results-screen'].forEach(s => {
+        document.getElementById(s).classList.add('hidden');
+      });
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    // קבלת עדכון על השחקנים בחדר
+    socket.on('update_players', (playersList) => {
+      // מציאת המספר שלי
+      const me = playersList.find(p => p.id === socket.id);
+      if (me) {
+        myNumber = me.number;
+        document.getElementById('my-badge').innerText = `אתה משתתף #${me.number} (${me.name})`;
+      }
+
+      // עדכון הלובי
+      const lobbyDiv = document.getElementById('lobby-players');
+      lobbyDiv.innerHTML = playersList.map(p => 
+        `<div class="player-item">
+          <span><strong>#${p.number}</strong> ${p.name}</span>
+          <span>${p.score} נק'</span>
+        </div>`
+      ).join('');
+
+      // עדכון סטטוס הצבעה בזמן שאלה
+      const statusDiv = document.getElementById('game-players-status');
+      if (statusDiv) {
+        statusDiv.innerHTML = playersList.map(p => 
+          `<div class="player-item">
+            <span><strong>#${p.number}</strong> ${p.name}</span>
+            <span>${p.hasVoted ? '✅ הצביע' : '⏳ ממתין'}</span>
+          </div>`
+        ).join('');
+      }
+    });
+
+    // שאלה חדשה הגיעה מהשרת
+    socket.on('new_question', (data) => {
+      showScreen('game-screen');
+      document.getElementById('q-counter').innerText = `שאלה ${data.qIndex} מתוך ${data.total}`;
+      document.getElementById('q-text').innerText = data.question.text;
+      document.getElementById('vote-status').innerText = '';
+
+      const container = document.getElementById('options-container');
+      container.innerHTML = '';
+
+      // יצירת אפשרויות בחירה
+      if (data.question.type === 'PLAYER_SELECT') {
+        // בחירה מתוך רשימת המשתתפים בחדר!
+        data.players.forEach(p => {
+          container.innerHTML += `<button class="btn-option" onclick="castVote('#${p.number} ${p.name}')">#${p.number} ${p.name}</button>`;
+        });
+      } else if (data.question.type === 'CHOICE') {
+        // בחירה מתוך תשובות אמריקאיות
+        data.question.options.forEach(opt => {
+          container.innerHTML += `<button class="btn-option" onclick="castVote('${opt}')">${opt}</button>`;
+        });
+      }
+    });
+
+    socket.on('vote_progress', (data) => {
+      document.getElementById('vote-status').innerText = `הצביעו ${data.votedCount} מתוך ${data.total}`;
+    });
+
+    socket.on('show_results', (data) => {
+      showScreen('results-screen');
+      document.getElementById('winning-result').innerText = `תשובת הרוב: ${data.winningVote}`;
+
+      const board = document.getElementById('leaderboard');
+      board.innerHTML = data.players.sort((a,b) => b.score - a.score).map(p => 
+        `<div class="player-item">
+          <span><strong>#${p.number}</strong> ${p.name}</span>
+          <span><strong>${p.score}</strong> נקודות</span>
+        </div>`
+      ).join('');
+    });
+  </script>
+</body>
+</html>
