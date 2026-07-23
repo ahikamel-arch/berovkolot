@@ -9,23 +9,9 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: #f0f2f5; color: #333; padding-bottom: 20px; }
     
-    /* כותרת מותג ראשית */
-    .brand-header {
-      text-align: center;
-      padding: 20px 10px 10px 10px;
-    }
-    .brand-title {
-      font-size: 2.2em;
-      font-weight: 900;
-      color: #2c3e50;
-      letter-spacing: -1px;
-      margin-bottom: 4px;
-    }
-    .brand-subtitle {
-      font-size: 0.95em;
-      color: #7f8c8d;
-      font-weight: 600;
-    }
+    .brand-header { text-align: center; padding: 20px 10px 10px 10px; }
+    .brand-title { font-size: 2.2em; font-weight: 900; color: #2c3e50; letter-spacing: -1px; margin-bottom: 4px; }
+    .brand-subtitle { font-size: 0.95em; color: #7f8c8d; font-weight: 600; }
 
     .top-bar {
       position: sticky;
@@ -40,6 +26,8 @@
       z-index: 1000;
     }
     .user-badge { background: #27ae60; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.9em; }
+    .host-badge { background: #f39c12; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: bold; margin-right: 5px; }
+    
     .container { max-width: 600px; margin: 0 auto; padding: 15px; }
     
     .card {
@@ -93,20 +81,22 @@
     .scoreboard-table tr.me { background: #e8f8f5; font-weight: bold; }
 
     .question-text { font-size: 1.25em; font-weight: bold; text-align: center; margin: 15px 0; color: #2c3e50; }
+    .waiting-msg { text-align: center; color: #e67e22; font-weight: bold; margin-top: 15px; padding: 10px; background: #fef5e7; border-radius: 8px; }
     .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
-  <!-- סרגל עליון עם שם השחקן -->
   <div id="topBar" class="top-bar hidden">
     <span>🗳️ ברוב קולות</span>
-    <span class="user-badge" id="myBadge">את/ה: -</span>
+    <div>
+      <span id="hostIndicator" class="host-badge hidden">👑 מנהל</span>
+      <span class="user-badge" id="myBadge">את/ה: -</span>
+    </div>
   </div>
 
   <div class="container">
     
-    <!-- כותרת ראשית ובולטת של המשחק -->
     <div class="brand-header">
       <div class="brand-title">🗳️ ברוב קולות</div>
       <div class="brand-subtitle">מי הכי סביר ש...? מנחשים ומגלים!</div>
@@ -122,8 +112,13 @@
     <!-- חדר המתנה -->
     <div id="lobbyCard" class="card hidden">
       <h2>חדר המתנה</h2>
-      <p style="text-align:center; color:#7f8c8d; margin-bottom:15px;">המתן לתחילת המשחק...</p>
-      <button onclick="startGame()">התחל משחק (לכולם)</button>
+      <p style="text-align:center; color:#7f8c8d; margin-bottom:15px;">כשתהיו מוכנים, המנהל יתחיל את המשחק...</p>
+      <div class="host-only hidden">
+        <button onclick="startGame()">התחל משחק (מנהל)</button>
+      </div>
+      <div class="guest-only waiting-msg">
+        ⏳ ממתינים למנהל המשחק שיתחיל...
+      </div>
     </div>
 
     <!-- מסך שאלה -->
@@ -139,7 +134,13 @@
       <h2>תוצאות ההצבעה</h2>
       <p style="text-align:center; font-size:1.1em;" id="winnerText"></p>
       <ul class="votes-list" id="votesBreakdown"></ul>
-      <button onclick="nextQuestion()">לשאלה הבאה ➔</button>
+      
+      <div class="host-only hidden">
+        <button onclick="nextQuestion()">לשאלה הבאה ➔ (מנהל)</button>
+      </div>
+      <div class="guest-only waiting-msg">
+        ⏳ ממתינים למנהל שיעבור לשאלה הבאה...
+      </div>
     </div>
 
     <!-- מסך סיום המשחק -->
@@ -147,7 +148,13 @@
       <h1 style="font-size:2.5em; margin-bottom:10px;">🏆</h1>
       <h2>המשחק הסתיים!</h2>
       <p style="font-size:1.3em; margin:15px 0; color:#27ae60;" id="finalWinnerHost"></p>
-      <button onclick="restartGame()" style="background:#27ae60;">התחל משחק חדש 🔄</button>
+      
+      <div class="host-only hidden">
+        <button onclick="restartGame()" style="background:#27ae60;">התחל משחק חדש 🔄 (מנהל)</button>
+      </div>
+      <div class="guest-only waiting-msg">
+        ⏳ ממתינים למנהל שיתחיל משחק חדש...
+      </div>
     </div>
 
     <!-- טבלת מובילים -->
@@ -170,6 +177,7 @@
   <script>
     const socket = io();
     let myName = '';
+    let isHost = false;
 
     function joinGame() {
       const name = document.getElementById('nameInput').value.trim();
@@ -190,7 +198,37 @@
     function nextQuestion() { socket.emit('next_question'); }
     function restartGame() { socket.emit('restart_game'); }
 
-    socket.on('update_players', (players) => { renderScoreboard(players); });
+    // קבלת עדכון מנהל
+    socket.on('host_status', (status) => {
+      isHost = status;
+      updateHostUI();
+    });
+
+    socket.on('update_players', (players) => { 
+      // בדיקה מחדש אם השחקן הנוכחי הפך למנהל בטבלה
+      const me = players.find(p => p.name === myName);
+      if (me) {
+        isHost = me.isHost;
+        updateHostUI();
+      }
+      renderScoreboard(players); 
+    });
+
+    function updateHostUI() {
+      const hostElements = document.querySelectorAll('.host-only');
+      const guestElements = document.querySelectorAll('.guest-only');
+      const hostIndicator = document.getElementById('hostIndicator');
+
+      if (isHost) {
+        hostElements.forEach(el => el.classList.remove('hidden'));
+        guestElements.forEach(el => el.classList.add('hidden'));
+        hostIndicator.classList.remove('hidden');
+      } else {
+        hostElements.forEach(el => el.classList.add('hidden'));
+        guestElements.forEach(el => el.classList.remove('hidden'));
+        hostIndicator.classList.add('hidden');
+      }
+    }
 
     socket.on('new_question', (data) => {
       document.getElementById('lobbyCard').classList.add('hidden');
@@ -266,7 +304,7 @@
         if (p.name === myName) tr.className = 'me';
         tr.innerHTML = `
           <td>${index + 1}</td>
-          <td>${p.name} ${p.name === myName ? '👤' : ''}</td>
+          <td>${p.isHost ? '👑 ' : ''}${p.name} ${p.name === myName ? '👤' : ''}</td>
           <td><strong>${p.score}</strong></td>
         `;
         tbody.appendChild(tr);
