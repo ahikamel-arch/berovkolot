@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ברוב קולות</title>
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f0f2f5; color: #333; padding-bottom: 20px; }
+    
+    .brand-header { text-align: center; padding: 20px 10px 10px 10px; }
+    .brand-title { font-size: 2.2em; font-weight: 900; color: #2c3e50; letter-spacing: -1px; margin-bottom: 4px; }
+    .brand-subtitle { font-size: 0.95em; color: #7f8c8d; font-weight: 600; }
+
+    .top-bar {
+      position: sticky;
+      top: 0;
+      background: #2c3e50;
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      z-index: 1000;
+    }
+    .user-badge { background: #27ae60; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.9em; }
+    .host-badge { background: #f39c12; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: bold; margin-right: 5px; }
+    
+    .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+    
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 15px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+
+    h1, h2, h3 { text-align: center; color: #2c3e50; margin-bottom: 15px; }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      font-size: 16px;
+      margin-bottom: 12px;
+    }
+
+    button {
+      width: 100%;
+      background: #3498db;
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+
+    .player-btn {
+      background: #ecf0f1;
+      color: #2c3e50;
+      border: 2px solid #bdc3c7;
+      margin-bottom: 8px;
+      text-align: right;
+      padding: 14px;
+    }
+    .player-btn.selected { background: #e74c3c; color: white; border-color: #c0392b; }
+
+    .votes-list { list-style: none; margin: 15px 0; padding: 0; }
+    .votes-list li { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; font-size: 1.1em; }
+
+    .scoreboard-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .scoreboard-table th, .scoreboard-table td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
+    .scoreboard-table th { background: #f8f9fa; color: #7f8c8d; font-size: 0.85em; }
+    .scoreboard-table tr.me { background: #e8f8f5; font-weight: bold; }
+
+    .question-text { font-size: 1.25em; font-weight: bold; text-align: center; margin: 15px 0; color: #2c3e50; }
+    .waiting-msg { text-align: center; color: #e67e22; font-weight: bold; margin-top: 15px; padding: 10px; background: #fef5e7; border-radius: 8px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+  <div id="topBar" class="top-bar hidden">
+    <span>🗳️ ברוב קולות</span>
+    <div>
+      <span id="hostIndicator" class="host-badge hidden">👑 מנהל</span>
+      <span class="user-badge" id="myBadge">את/ה: -</span>
+    </div>
+  </div>
+
+  <div class="container">
+    
+    <div class="brand-header">
+      <div class="brand-title">🗳️ ברוב קולות</div>
+      <div class="brand-subtitle">מי הכי סביר ש...? מנחשים ומגלים!</div>
+    </div>
+
+    <!-- מסך התחברות -->
+    <div id="loginCard" class="card">
+      <h2>הצטרפות למשחק</h2>
+      <input type="text" id="nameInput" placeholder="הכנס את שמך..." maxlength="15">
+      <button onclick="joinGame()">הכנס למשחק</button>
+    </div>
+
+    <!-- חדר המתנה -->
+    <div id="lobbyCard" class="card hidden">
+      <h2>חדר המתנה</h2>
+      <p style="text-align:center; color:#7f8c8d; margin-bottom:15px;">כשתהיו מוכנים, המנהל יתחיל את המשחק...</p>
+      <div class="host-only hidden">
+        <button onclick="startGame()">התחל משחק (מנהל)</button>
+      </div>
+      <div class="guest-only waiting-msg">
+        ⏳ ממתינים למנהל המשחק שיתחיל...
+      </div>
+    </div>
+
+    <!-- מסך שאלה -->
+    <div id="gameCard" class="card hidden">
+      <div style="text-align: center; color: #7f8c8d; font-size: 0.9em;" id="questionNum">שאלה</div>
+      <div class="question-text" id="questionText">טוען שאלה...</div>
+      <div id="optionsContainer"></div>
+      <div id="voteStatus" style="text-align:center; margin-top:10px; color:#e67e22; font-weight:bold;"></div>
+    </div>
+
+    <!-- מסך תוצאות סיבוב -->
+    <div id="resultsCard" class="card hidden">
+      <h2>תוצאות ההצבעה</h2>
+      <p style="text-align:center; font-size:1.1em;" id="winnerText"></p>
+      <ul class="votes-list" id="votesBreakdown"></ul>
+      
+      <div class="host-only hidden">
+        <button onclick="nextQuestion()">לשאלה הבאה ➔ (מנהל)</button>
+      </div>
+      <div class="guest-only waiting-msg">
+        ⏳ ממתינים למנהל שיעבור לשאלה הבאה...
+      </div>
+    </div>
+
+    <!-- מסך סיום המשחק -->
+    <div id="gameOverCard" class="card hidden" style="text-align: center;">
+      <h1 style="font-size:2.5em; margin-bottom:10px;">🏆</h1>
+      <h2>המשחק הסתיים!</h2>
+      <p style="font-size:1.3em; margin:15px 0; color:#27ae60;" id="finalWinnerHost"></p>
+      
+      <div class="host-only hidden">
+        <button onclick="restartGame()" style="background:#27ae60;">התחל משחק חדש 🔄 (מנהל)</button>
+      </div>
+      <div class="guest-only waiting-msg">
+        ⏳ ממתינים למנהל שיתחיל משחק חדש...
+      </div>
+    </div>
+
+    <!-- טבלת מובילים -->
+    <div id="scoreboardCard" class="card hidden">
+      <h3 style="margin-bottom:10px; font-size:1em; color:#7f8c8d;">🏆 טבלת מובילים בזמן אמת</h3>
+      <table class="scoreboard-table">
+        <thead>
+          <tr>
+            <th>מיקום</th>
+            <th>שם</th>
+            <th>ניקוד מצטבר</th>
+          </tr>
+        </thead>
+        <tbody id="scoreboardBody"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script>
+    const socket = io();
+    let myName = '';
+    let isHost = false;
+
+    function joinGame() {
+      const name = document.getElementById('nameInput').value.trim();
+      if (!name) return alert('נא להזין שם');
+      
+      myName = name;
+      document.getElementById('myBadge').innerText = 'את/ה: ' + myName;
+      document.getElementById('topBar').classList.remove('hidden');
+      
+      socket.emit('join_game', myName);
+      
+      document.getElementById('loginCard').classList.add('hidden');
+      document.getElementById('lobbyCard').classList.remove('hidden');
+      document.getElementById('scoreboardCard').classList.remove('hidden');
+    }
+
+    function startGame() { socket.emit('next_question'); }
+    function nextQuestion() { socket.emit('next_question'); }
+    function restartGame() { socket.emit('restart_game'); }
+
+    // קבלת עדכון מנהל
+    socket.on('host_status', (status) => {
+      isHost = status;
+      updateHostUI();
+    });
+
+    socket.on('update_players', (players) => { 
+      // בדיקה מחדש אם השחקן הנוכחי הפך למנהל בטבלה
+      const me = players.find(p => p.name === myName);
+      if (me) {
+        isHost = me.isHost;
+        updateHostUI();
+      }
+      renderScoreboard(players); 
+    });
+
+    function updateHostUI() {
+      const hostElements = document.querySelectorAll('.host-only');
+      const guestElements = document.querySelectorAll('.guest-only');
+      const hostIndicator = document.getElementById('hostIndicator');
+
+      if (isHost) {
+        hostElements.forEach(el => el.classList.remove('hidden'));
+        guestElements.forEach(el => el.classList.add('hidden'));
+        hostIndicator.classList.remove('hidden');
+      } else {
+        hostElements.forEach(el => el.classList.add('hidden'));
+        guestElements.forEach(el => el.classList.remove('hidden'));
+        hostIndicator.classList.add('hidden');
+      }
+    }
+
+    socket.on('new_question', (data) => {
+      document.getElementById('lobbyCard').classList.add('hidden');
+      document.getElementById('resultsCard').classList.add('hidden');
+      document.getElementById('gameOverCard').classList.add('hidden');
+      document.getElementById('gameCard').classList.remove('hidden');
+
+      document.getElementById('questionNum').innerText = `שאלה ${data.qIndex} מתוך ${data.total}`;
+      document.getElementById('questionText').innerText = data.question.text;
+      document.getElementById('voteStatus').innerText = '';
+
+      const container = document.getElementById('optionsContainer');
+      container.innerHTML = '';
+
+      data.players.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'player-btn';
+        btn.innerText = p.name + (p.name === myName ? ' (את/ה)' : '');
+        btn.onclick = () => submitVote(p.name, btn);
+        container.appendChild(btn);
+      });
+
+      renderScoreboard(data.players);
+    });
+
+    function submitVote(votedName, btnElement) {
+      document.querySelectorAll('.player-btn').forEach(b => b.classList.remove('selected'));
+      btnElement.classList.add('selected');
+      socket.emit('submit_vote', votedName);
+      document.getElementById('voteStatus').innerText = 'הצבעתך נקלטה! ממתינים לשאר...';
+    }
+
+    socket.on('vote_progress', (data) => {
+      document.getElementById('voteStatus').innerText = `הצביעו ${data.votedCount} מתוך ${data.total} שחקנים`;
+    });
+
+    socket.on('show_results', (data) => {
+      document.getElementById('gameCard').classList.add('hidden');
+      document.getElementById('resultsCard').classList.remove('hidden');
+
+      if (data.isTie) {
+        document.getElementById('winnerText').innerHTML = `<span style="color:#e74c3c; font-weight:bold;">תיקו! אין רוב קולות ברור.</span>`;
+      } else {
+        document.getElementById('winnerText').innerHTML = `הרוב בחרו ב: <strong style="color:#27ae60; font-size:1.3em;">${data.winningVote}</strong>`;
+      }
+
+      const votesList = document.getElementById('votesBreakdown');
+      votesList.innerHTML = '';
+      data.playersList.forEach(p => {
+        const count = data.votesCount[p.name] || 0;
+        const li = document.createElement('li');
+        li.innerHTML = `<span>${p.name}</span> <span><strong>${count}</strong> קולות</span>`;
+        votesList.appendChild(li);
+      });
+
+      renderScoreboard(data.playersList);
+    });
+
+    socket.on('game_over', (data) => {
+      document.getElementById('gameCard').classList.add('hidden');
+      document.getElementById('resultsCard').classList.add('hidden');
+      document.getElementById('gameOverCard').classList.remove('hidden');
+
+      document.getElementById('finalWinnerHost').innerText = `המנצח הגדול: ${data.winner.name} עם ${data.winner.score} נקודות! 🎉`;
+      renderScoreboard(data.playersList);
+    });
+
+    function renderScoreboard(players) {
+      const tbody = document.getElementById('scoreboardBody');
+      tbody.innerHTML = '';
+      players.forEach((p, index) => {
+        const tr = document.createElement('tr');
+        if (p.name === myName) tr.className = 'me';
+        tr.innerHTML = `
+          <td>${index + 1}</td>
+          <td>${p.isHost ? '👑 ' : ''}${p.name} ${p.name === myName ? '👤' : ''}</td>
+          <td><strong>${p.score}</strong></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>
