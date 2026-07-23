@@ -10,7 +10,7 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// 🎯 הגדרות סיום המשחק המעודכנות
+// 🎯 הגדרות סיום המשחק
 const TARGET_SCORE = 15;  // 15 נקודות לניצחון
 const MAX_QUESTIONS = 25; // 25 סיבובים מקסימום
 
@@ -47,11 +47,29 @@ const rawQuestions = [
   "מי הכי סביר שיחפש את המשקפיים/הטלפון כשהם כבר ביד שלו?"
 ];
 
-const questions = rawQuestions.map((qText, index) => ({
-  id: index + 1,
-  type: "PLAYER_SELECT",
-  text: qText
-}));
+// פונקציה לערבוב אקראי של מערך (Fisher-Yates Shuffle)
+function shuffleArray(array) {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+let activeQuestions = [];
+
+function resetAndShuffleQuestions() {
+  const shuffledText = shuffleArray(rawQuestions);
+  activeQuestions = shuffledText.map((qText, index) => ({
+    id: index + 1,
+    type: "PLAYER_SELECT",
+    text: qText
+  }));
+}
+
+// ערבוב ראשוני עם הפעלת השרת
+resetAndShuffleQuestions();
 
 let playersMap = new Map();
 let nextPlayerNumber = 1;
@@ -89,7 +107,7 @@ io.on('connection', (socket) => {
   socket.on('next_question', () => {
     playersMap.forEach(p => p.currentVote = null);
 
-    const q = questions[currentQuestionIndex];
+    const q = activeQuestions[currentQuestionIndex];
     questionsPlayed++;
 
     io.emit('new_question', {
@@ -125,9 +143,13 @@ io.on('connection', (socket) => {
     });
     currentQuestionIndex = 0;
     questionsPlayed = 0;
+    
+    // ערבוב השאלות מחדש למשחק החדש
+    resetAndShuffleQuestions();
+    
     io.emit('update_players', getPlayersList());
     
-    const q = questions[currentQuestionIndex];
+    const q = activeQuestions[currentQuestionIndex];
     questionsPlayed++;
     io.emit('new_question', {
       question: q,
@@ -202,7 +224,7 @@ function calculateResults() {
       votesCount: votes,
       playersList: playersList
     });
-    currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
+    currentQuestionIndex = (currentQuestionIndex + 1) % activeQuestions.length;
   }
 }
 
