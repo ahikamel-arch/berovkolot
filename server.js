@@ -8,80 +8,100 @@ const io = new Server(server, { cors: { origin: "*" } });
 
 app.use(express.static('public'));
 
-// מאגר שאלות לדוגמה
+// מאגר שאלות מורחב (חלקן מבוססות על שחקני החדר, חלקן אמריקאיות)
 const questions = [
-  { id: 1, text: "מי מבין היושבים בחדר הכי סביר שישכח איפה הוא החנה את האוטו?" },
-  { id: 2, text: "מה הדבר הכי גרוע שיכול לקרות בדייט ראשון?", options: ["איחור של שעה", "שכח את הארנק", "דיבר רק על האקס/ית", "נתקע לו אוכל בשיניים"] },
-  { id: 3, text: "מי הכי סביר שישרוד על אי בודד?" }
+  { id: 1, type: "PLAYER_SELECT", text: "מי מבין היושבים בחדר הכי סביר שישכח איפה הוא החנה את האוטו?" },
+  { id: 2, type: "PLAYER_SELECT", text: "מי הכי סביר שישרוד על אי בודד?" },
+  { id: 3, type: "CHOICE", text: "מה הדבר הכי גרוע שיכול לקרות בדייט ראשון?", options: ["איחור של שעה", "שכח את הארנק", "דיבר רק על האקס/ית", "נתקע לו אוכל בשיניים"] },
+  { id: 4, type: "PLAYER_SELECT", text: "מי הכי סביר שיאחר באיחור אופנתי לכל אירוע?" },
+  { id: 5, type: "PLAYER_SELECT", text: "מי הכי סביר שיעשה קניות ויקנה הכל חוץ ממה שהוא היה צריך?" },
+  { id: 6, type: "CHOICE", text: "איזה כוח-על הכי שווה לדעתכם?", options: ["תעופה", "רואה ולא נראה", "קריאת מחשבות", "מסע בזמן"] },
+  { id: 7, type: "PLAYER_SELECT", text: "מי הכי סביר שיהיה מיליונר ראשון?" },
+  { id: 8, type: "PLAYER_SELECT", text: "מי בחדר הכי סביר שיארגן טיול ספונטני באמצע הלילה?" },
+  { id: 9, type: "CHOICE", text: "מה הפיצה הכי טעימה?", options: ["פטריות", "זיתים", "בצל", "פפרוני/נקניק"] },
+  { id: 10, type: "PLAYER_SELECT", text: "מי בחדר הכי סביר שייקח את המיקרופון בקריוקי ולא ישחרר?" }
 ];
 
-let gameState = {
-  players: {}, // socketId -> { name, score, currentVote }
-  currentQuestionIndex: 0,
-  status: 'LOBBY' // LOBBY, VOTING, RESULTS
-};
+let players = {}; // socketId -> { id, number, name, score, currentVote }
+let nextPlayerNumber = 1;
+let currentQuestionIndex = 0;
+
+function getPlayersList() {
+  return Object.values(players).map(p => ({
+    id: p.id,
+    number: p.number,
+    name: p.name,
+    score: p.score,
+    hasVoted: p.currentVote !== null
+  }));
+}
 
 io.on('connection', (socket) => {
-  console.log('משתמש התחבר:', socket.id);
 
   // הצטרפות שחקן
   socket.on('join_game', (playerName) => {
-    gameState.players[socket.id] = { name: playerName, score: 0, currentVote: null };
-    io.emit('update_players', Object.values(gameState.players));
+    players[socket.id] = {
+      id: socket.id,
+      number: nextPlayerNumber++,
+      name: playerName,
+      score: 0,
+      currentVote: null
+    };
+
+    // עדכון כל השחקנים ברשימה המעודכנת
+    io.emit('update_players', getPlayersList());
   });
 
-  // התחלת משחק / שאלה הבאה
+  // מעבר לשאלה הבאה / התחלת המשחק
   socket.on('next_question', () => {
-    gameState.status = 'VOTING';
-    // איפוס הצבעות קודמות
-    Object.keys(gameState.players).forEach(id => gameState.players[id].currentVote = null);
-    
-    const currentQ = questions[gameState.currentQuestionIndex];
-    io.emit('new_question', { 
-      question: currentQ, 
-      qIndex: gameState.currentQuestionIndex + 1,
-      total: questions.length 
+    // איפוס הצבעות
+    Object.keys(players).forEach(id => players[id].currentVote = null);
+
+    const q = questions[currentQuestionIndex];
+    io.emit('new_question', {
+      question: q,
+      qIndex: currentQuestionIndex + 1,
+      total: questions.length,
+      players: getPlayersList()
     });
   });
 
-  // קבלת הצבעה משחקן
+  // קבלת הצבעה
   socket.on('submit_vote', (vote) => {
-    if (gameState.players[socket.id]) {
-      gameState.players[socket.id].currentVote = vote;
+    if (players[socket.id]) {
+      players[socket.id].currentVote = vote;
     }
 
-    // בדיקה אם כולם הצביעו
-    const totalPlayers = Object.keys(gameState.players).length;
-    const votedCount = Object.values(gameState.players).filter(p => p.currentVote !== null).length;
+    const total = Object.keys(players).length;
+    const votedCount = Object.values(players).filter(p => p.currentVote !== null).length;
 
-    io.emit('vote_progress', { votedCount, totalPlayers });
+    io.emit('update_players', getPlayersList());
+    io.emit('vote_progress', { votedCount, total });
 
-    // אם כולם הצביעו - מחשבים תוצאות
-    if (votedCount >= totalPlayers && totalPlayers > 0) {
+    // אם כולם הצביעו - חישוב תוצאות
+    if (votedCount >= total && total > 0) {
       calculateResults();
     }
   });
 
   socket.on('disconnect', () => {
-    delete gameState.players[socket.id];
-    io.emit('update_players', Object.values(gameState.players));
+    delete players[socket.id];
+    io.emit('update_players', getPlayersList());
   });
 });
 
 function calculateResults() {
-  gameState.status = 'RESULTS';
   const votes = {};
 
-  // ספירת הקולות
-  Object.values(gameState.players).forEach(p => {
+  Object.values(players).forEach(p => {
     if (p.currentVote) {
       votes[p.currentVote] = (votes[p.currentVote] || 0) + 1;
     }
   });
 
-  // מציאת תשובת הרוב
   let maxVotes = 0;
-  let winningVote = null;
+  let winningVote = '';
+
   for (const [vote, count] of Object.entries(votes)) {
     if (count > maxVotes) {
       maxVotes = count;
@@ -89,8 +109,8 @@ function calculateResults() {
     }
   }
 
-  // חלוקת ניקוד למי שהצביע כמו הרוב
-  Object.values(gameState.players).forEach(p => {
+  // חלוקת נקודות
+  Object.values(players).forEach(p => {
     if (p.currentVote === winningVote) {
       p.score += 10;
     }
@@ -99,11 +119,11 @@ function calculateResults() {
   io.emit('show_results', {
     winningVote,
     votesCount: votes,
-    players: Object.values(gameState.players)
+    players: getPlayersList()
   });
 
-  gameState.currentQuestionIndex = (gameState.currentQuestionIndex + 1) % questions.length;
+  currentQuestionIndex = (currentQuestionIndex + 1) % questions.length;
 }
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
