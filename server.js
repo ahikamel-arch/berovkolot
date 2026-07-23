@@ -10,9 +10,8 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// 🎯 הגדרות סיום המשחק
-const TARGET_SCORE = 15;  // 15 נקודות לניצחון
-const MAX_QUESTIONS = 25; // 25 סיבובים מקסימום
+const TARGET_SCORE = 15;  
+const MAX_QUESTIONS = 25; 
 
 const rawQuestions = [
   "למי הכי מתאים ליזום שיחה עם אדם זר באוטובוס?",
@@ -47,7 +46,6 @@ const rawQuestions = [
   "מי הכי סביר שיחפש את המשקפיים/הטלפון כשהם כבר ביד שלו?"
 ];
 
-// פונקציה לערבוב אקראי של מערך (Fisher-Yates Shuffle)
 function shuffleArray(array) {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -68,13 +66,14 @@ function resetAndShuffleQuestions() {
   }));
 }
 
-// ערבוב ראשוני עם הפעלת השרת
+// ערבוב ראשוני עם עליית השרת
 resetAndShuffleQuestions();
 
 let playersMap = new Map();
 let nextPlayerNumber = 1;
 let currentQuestionIndex = 0;
 let questionsPlayed = 0;
+let hostSocketId = null; 
 
 function getPlayersList() {
   return Array.from(playersMap.values())
@@ -83,7 +82,8 @@ function getPlayersList() {
       number: p.number,
       name: p.name,
       score: p.score,
-      hasVoted: p.currentVote !== null
+      hasVoted: p.currentVote !== null,
+      isHost: p.id === hostSocketId
     }))
     .sort((a, b) => b.score - a.score);
 }
@@ -92,6 +92,10 @@ io.on('connection', (socket) => {
   socket.emit('update_players', getPlayersList());
 
   socket.on('join_game', (playerName) => {
+    if (!hostSocketId || playersMap.size === 0) {
+      hostSocketId = socket.id;
+    }
+
     const newPlayer = {
       id: socket.id,
       number: nextPlayerNumber++,
@@ -101,14 +105,21 @@ io.on('connection', (socket) => {
     };
 
     playersMap.set(socket.id, newPlayer);
+    
+    socket.emit('host_status', socket.id === hostSocketId);
     io.emit('update_players', getPlayersList());
   });
 
   socket.on('next_question', () => {
+    if (socket.id !== hostSocketId) return;
+
     playersMap.forEach(p => p.currentVote = null);
 
     const q = activeQuestions[currentQuestionIndex];
     questionsPlayed++;
+    
+    // קידום האינדקס לשאלה הבאה
+    currentQuestionIndex = (currentQuestionIndex + 1) % activeQuestions.length;
 
     io.emit('new_question', {
       question: q,
@@ -137,6 +148,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('restart_game', () => {
+    if (socket.id !== hostSocketId) return;
+
     playersMap.forEach(p => {
       p.score = 0;
       p.currentVote = null;
@@ -144,13 +157,15 @@ io.on('connection', (socket) => {
     currentQuestionIndex = 0;
     questionsPlayed = 0;
     
-    // ערבוב השאלות מחדש למשחק החדש
+    // ערבוב מחדש לפתיחת משחק חדש
     resetAndShuffleQuestions();
     
     io.emit('update_players', getPlayersList());
     
     const q = activeQuestions[currentQuestionIndex];
     questionsPlayed++;
+    currentQuestionIndex = (currentQuestionIndex + 1) % activeQuestions.length;
+
     io.emit('new_question', {
       question: q,
       qIndex: questionsPlayed,
@@ -161,6 +176,16 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     playersMap.delete(socket.id);
+
+    if (socket.id === hostSocketId) {
+      const remainingPlayers = Array.from(playersMap.keys());
+      hostSocketId = remainingPlayers.length > 0 ? remainingPlayers[0] : null;
+      
+      if (hostSocketId) {
+        io.to(hostSocketId).emit('host_status', true);
+      }
+    }
+
     io.emit('update_players', getPlayersList());
   });
 });
@@ -209,7 +234,6 @@ function calculateResults() {
   const playersList = getPlayersList();
   const topPlayer = playersList[0];
 
-  // בדיקת תנאי סיום (15 נקודות או 25 שאלות)
   const isGameOver = (topPlayer && topPlayer.score >= TARGET_SCORE) || questionsPlayed >= MAX_QUESTIONS;
 
   if (isGameOver) {
@@ -224,7 +248,6 @@ function calculateResults() {
       votesCount: votes,
       playersList: playersList
     });
-    currentQuestionIndex = (currentQuestionIndex + 1) % activeQuestions.length;
   }
 }
 
