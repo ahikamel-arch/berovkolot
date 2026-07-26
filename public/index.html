@@ -213,7 +213,6 @@
     let myName = '';
     let hasVotedThisRound = false;
 
-    // עדכון רשימת החדרים הזמינים במסך הכניסה
     socket.on('rooms_list_update', (roomsList) => {
       const container = document.getElementById('rooms-container');
       if (roomsList.length === 0) {
@@ -272,7 +271,6 @@
       document.getElementById('entry-error').innerText = msg;
     });
 
-    // ניהול ממתינים
     socket.on('pending_players_update', (pendingList) => {
       if (!isHost) return;
       const panel = document.getElementById('admin-approval-panel');
@@ -306,6 +304,13 @@
       }
     }
 
+    function renderVotingButtons(players) {
+      const options = document.getElementById('voting-options');
+      options.innerHTML = players.map(p => 
+        `<button class="vote-btn" onclick="vote('${p.name}')">${p.name}</button>`
+      ).join('');
+    }
+
     socket.on('update_players', (players) => {
       const list = document.getElementById('players-list');
       list.innerHTML = players.map(p => `
@@ -315,22 +320,26 @@
         </li>
       `).join('');
 
+      // עדכון כפתורי ההצבעה רק אם השחקן עדיין לא הצביע בסיבוב הזה
       if (!hasVotedThisRound) {
-        const options = document.getElementById('voting-options');
-        options.innerHTML = players.map(p => 
-          `<button class="vote-btn" onclick="vote('${p.name}')">${p.name}</button>`
-        ).join('');
+        renderVotingButtons(players);
       }
     });
 
     socket.on('new_question', (data) => {
+      // 1. איפוס דגל ההצבעה
       hasVotedThisRound = false;
+
+      // 2. איפוס התצוגה
       document.getElementById('results-area').classList.add('hidden');
       document.getElementById('voting-area').classList.remove('hidden');
       document.getElementById('vote-status').innerText = '';
 
       document.getElementById('q-progress').innerText = `שאלה ${data.qIndex}/${data.total}`;
       document.getElementById('question-text').innerText = data.question.text;
+
+      // 3. יצירה מחדש ופתיחה של הלחצנים
+      renderVotingButtons(data.players);
     });
 
     socket.on('vote_progress', (data) => {
@@ -344,16 +353,14 @@
 
       const buttons = document.querySelectorAll('.vote-btn');
       buttons.forEach(btn => {
-        if (btn.innerText === candidateName) {
+        if (btn.innerText.trim() === candidateName) {
           btn.classList.add('selected');
-        } else {
-          btn.disabled = true;
-          btn.style.opacity = '0.5';
         }
+        btn.disabled = true;
+        btn.style.opacity = btn.innerText.trim() === candidateName ? '1' : '0.5';
       });
     }
 
-    // הצגת תוצאות השאלה ופירוט הקולות
     socket.on('show_results', (data) => {
       document.getElementById('voting-area').classList.add('hidden');
       const resultsArea = document.getElementById('results-area');
@@ -361,7 +368,7 @@
 
       const title = document.getElementById('winner-title');
       if (data.isTie) {
-        title.innerText = "🤝 יש תיקו! אף אחד לא קיבל ניקוד השיוויון.";
+        title.innerText = "🤝 יש תיקו! אין ניקוד בתיקו.";
       } else {
         title.innerText = `🎉 הרוב קבע: ${data.winningVote}!`;
       }
@@ -373,13 +380,24 @@
       breakdownHtml += '</ul>';
 
       document.getElementById('votes-breakdown').innerHTML = breakdownHtml;
+
+      // עדכון טבלת המובילים עם הניקוד החדש
+      if (data.playersList) {
+        const list = document.getElementById('players-list');
+        list.innerHTML = data.playersList.map(p => `
+          <li>
+            <span>${p.name} ${p.isHost ? '👑' : ''}</span>
+            <span>${p.score} נק'</span>
+          </li>
+        `).join('');
+      }
     });
 
     socket.on('game_over', (data) => {
       document.getElementById('voting-area').classList.add('hidden');
       const resultsArea = document.getElementById('results-area');
       resultsArea.classList.remove('hidden');
-      document.getElementById('winner-title').innerText = `🏆 המשחק הסתיים! המנצח/ת הוא/היא: ${data.winner.name}!`;
+      document.getElementById('winner-title').innerText = `🏆 המשחק הסתיים! המנצח/ת: ${data.winner.name}!`;
       document.getElementById('votes-breakdown').innerHTML = '';
     });
 
