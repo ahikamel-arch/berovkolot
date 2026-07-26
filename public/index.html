@@ -57,7 +57,6 @@
     
     .hidden { display: none !important; }
     
-    /* רשימת שחקנים וכפתורי הצבעה */
     .players-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -76,7 +75,6 @@
     .vote-btn:hover { background: #007bff; color: white; }
     .vote-btn.selected { background: #28a745; color: white; border-color: #218838; }
 
-    /* רשימת חדרים פעילים */
     .rooms-list {
       margin: 15px 0;
       max-height: 180px;
@@ -98,7 +96,6 @@
     }
     .room-item:hover { background: #e2e6ea; }
 
-    /* פאנל אישורים */
     .pending-box {
       background: #fff3cd;
       border: 1px solid #ffeeba;
@@ -114,7 +111,6 @@
     }
     .pending-item button { width: auto; padding: 6px 12px; margin: 0 4px; }
 
-    /* מסךתוצאות */
     .results-box {
       background: #e9ecef;
       padding: 15px;
@@ -153,9 +149,12 @@
     <hr style="margin: 20px 0; border: 0; border-top: 1px solid #ddd;">
 
     <div>
-      <h3>או בחר חדר קיים להצטרפות:</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin:0;">חדרים פעילים:</h3>
+        <button onclick="requestRooms()" class="btn-primary" style="width: auto; padding: 4px 10px; margin: 0; font-size: 13px;">🔄 רענן</button>
+      </div>
       <div id="rooms-container" class="rooms-list">
-        <p style="color: #6c757d;">אין חדרים פעילים כרגע</p>
+        <p style="color: #6c757d;">מחפש חדרים...</p>
       </div>
     </div>
 
@@ -213,9 +212,18 @@
     let myName = '';
     let hasVotedThisRound = false;
 
+    // ברגע שהחיבור לשרת מוכן - נבקש את החדרים
+    socket.on('connect', () => {
+      requestRooms();
+    });
+
+    function requestRooms() {
+      socket.emit('get_rooms');
+    }
+
     socket.on('rooms_list_update', (roomsList) => {
       const container = document.getElementById('rooms-container');
-      if (roomsList.length === 0) {
+      if (!roomsList || roomsList.length === 0) {
         container.innerHTML = '<p style="color: #6c757d;">אין חדרים פעילים כרגע</p>';
         return;
       }
