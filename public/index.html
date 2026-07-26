@@ -114,7 +114,7 @@
     }
     .pending-item button { width: auto; padding: 6px 12px; margin: 0 4px; }
 
-    /* מסך תוצאות */
+    /* מסךתוצאות */
     .results-box {
       background: #e9ecef;
       padding: 15px;
@@ -320,17 +320,14 @@
         </li>
       `).join('');
 
-      // עדכון כפתורי ההצבעה רק אם השחקן עדיין לא הצביע בסיבוב הזה
       if (!hasVotedThisRound) {
         renderVotingButtons(players);
       }
     });
 
     socket.on('new_question', (data) => {
-      // 1. איפוס דגל ההצבעה
       hasVotedThisRound = false;
 
-      // 2. איפוס התצוגה
       document.getElementById('results-area').classList.add('hidden');
       document.getElementById('voting-area').classList.remove('hidden');
       document.getElementById('vote-status').innerText = '';
@@ -338,7 +335,6 @@
       document.getElementById('q-progress').innerText = `שאלה ${data.qIndex}/${data.total}`;
       document.getElementById('question-text').innerText = data.question.text;
 
-      // 3. יצירה מחדש ופתיחה של הלחצנים
       renderVotingButtons(data.players);
     });
 
@@ -381,7 +377,6 @@
 
       document.getElementById('votes-breakdown').innerHTML = breakdownHtml;
 
-      // עדכון טבלת המובילים עם הניקוד החדש
       if (data.playersList) {
         const list = document.getElementById('players-list');
         list.innerHTML = data.playersList.map(p => `
@@ -401,8 +396,13 @@
       document.getElementById('votes-breakdown').innerHTML = '';
     });
 
-    function nextQuestion() { socket.emit('next_question'); }
-    function restartGame() { socket.emit('restart_game'); }
+    function nextQuestion() { 
+      socket.emit('next_question', { roomId: currentRoom }); 
+    }
+
+    function restartGame() { 
+      socket.emit('restart_game', { roomId: currentRoom }); 
+    }
   </script>
 </body>
 </html>
