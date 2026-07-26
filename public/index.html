@@ -183,12 +183,38 @@
     .score-plus { color: #28a745; }
     .score-minus { color: #dc3545; }
     .score-zero { color: #6c757d; }
+
+    /* הודעת שגיאה צפה */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 50%;
+      transform: translateX(50%);
+      background: #dc3545;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-weight: bold;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+      z-index: 4000;
+      max-width: 90%;
+      text-align: center;
+    }
+    .version-tag {
+      position: fixed;
+      bottom: 6px;
+      left: 10px;
+      font-size: 11px;
+      color: #999;
+      z-index: 500;
+    }
   </style>
 </head>
 <body>
 
   <!-- כפתור כללים צף -->
   <button class="help-fab" onclick="toggleRules(true)" title="כללי המשחק">?</button>
+  <div class="version-tag">גרסה 1.4</div>
 
   <!-- חלונית כללים -->
   <div id="rules-modal" class="modal-overlay hidden" onclick="if(event.target===this) toggleRules(false)">
@@ -373,6 +399,23 @@
     function toggleRules(show) {
       document.getElementById('rules-modal').classList.toggle('hidden', !show);
     }
+
+    // הודעת שגיאה צפה - כדי שדחיות מהשרת לא יהיו שקטות
+    let toastTimer = null;
+    function showToast(msg) {
+      let el = document.getElementById('toast');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'toast';
+        document.body.appendChild(el);
+      }
+      el.innerText = msg;
+      el.style.display = 'block';
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.style.display = 'none'; }, 4000);
+    }
+
+    socket.on('host_action_error', (msg) => showToast('⚠️ ' + msg));
 
     socket.on('rooms_list_update', (roomsList) => {
       const container = document.getElementById('rooms-container');
