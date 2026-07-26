@@ -251,7 +251,7 @@ const rawQuestions = [
   "מי הכי סביר שינסה לדבר במבטא אמריקאי וישמע מצחיק?",
   "מי הכי סביר שישים שעון מעורר ל-5 בבוקר וינמנם עד 8?",
   "מי הכי סביר שיסרב לאכול משהו רק כי הצורה שלו מוזרה?",
-  "מי הכי סביר שיחשוב שבראק אובמה עדיין נשיא?",
+  "מי הכי סביר שיחשוב שהבראק אובמה עדיין נשיא?",
   "מי הכי סביר שיקנה ציוד ספורט יקר וישתמש בו פעם אחת?",
   "מי הכי סביר שיצלם תמונה של האוכל לפני שהוא אוכל?",
   "מי הכי סביר שישכח איפה הוא שם את המטריה בגשם?",
@@ -291,7 +291,7 @@ const rawQuestions = [
   "עם מי הכי כיף ללכת להופעה?",
   "מי יביא לטיול את התרופה שאף אחד לא חשב לקחת?",
   "מי הכי סביר שיזמין את המנה הכי יקרה בתפריט בלי להסתכל על המחיר?",
-  "מי יבזבז 20 דקות עלבחירת פילטר לתמונה?",
+  "מי יבזבז 20 דקות על בחירת פילטר לתמונה?",
   "מי יגיד 'אני תוך 5 דקות שם' כשהוא עוד במיטה?",
   "מי הכי סביר שיצא מהסופר עם עודף של 100 שקל ויחזור להחזיר אותו?",
   "מי ינסה לשכנע את כולם שקפה בלי סוכר זה בעצם טעים?",
@@ -500,10 +500,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('next_question', () => {
-    const room = rooms.get(socket.roomId);
-    if (!room || socket.id !== room.hostSocketId) return;
+  socket.on('next_question', (data) => {
+    const reqRoomId = (data && data.roomId) ? data.roomId : socket.roomId;
+    const room = rooms.get(reqRoomId);
 
+    if (!room) {
+      console.log('חדר לא נמצא עבור next_question:', reqRoomId);
+      return;
+    }
+
+    if (socket.id !== room.hostSocketId) {
+      console.log('ניסיון מעבר שאלה ע"י שחקן שאינו מנהל');
+      return;
+    }
+
+    socket.roomId = reqRoomId;
     room.players.forEach(p => p.currentVote = null);
 
     if (room.currentQuestionIndex >= room.activeQuestions.length) {
@@ -551,9 +562,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('restart_game', () => {
-    const room = rooms.get(socket.roomId);
+  socket.on('restart_game', (data) => {
+    const reqRoomId = (data && data.roomId) ? data.roomId : socket.roomId;
+    const room = rooms.get(reqRoomId);
+
     if (!room || socket.id !== room.hostSocketId) return;
+
+    socket.roomId = reqRoomId;
 
     room.players.forEach(p => {
       p.score = 0;
