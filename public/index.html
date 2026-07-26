@@ -307,6 +307,7 @@
     let myName = '';
     let hasVotedThisRound = false;
     let roundActive = false; // האם יש כרגע שאלה פתוחה להצבעה
+    let gameEnded = false;   // האם המשחק הסתיים (עד התחלה מחדש)
 
     function saveSession() {
       sessionStorage.setItem('bv_room', currentRoom);
@@ -349,7 +350,11 @@
       } else {
         roundActive = false;
         hasVotedThisRound = false;
-        if (data.qIndex > 0) {
+        gameEnded = !!data.gameOver;
+        if (gameEnded) {
+          document.getElementById('question-text').innerText = '🏆 המשחק הסתיים! המנהל יכול להתחיל משחק חדש.';
+          document.getElementById('q-progress').innerText = '';
+        } else if (data.qIndex > 0) {
           document.getElementById('question-text').innerText = 'ממתינים לשאלה הבאה...';
           document.getElementById('q-progress').innerText = 'שאלה ' + data.qIndex + '/' + data.total;
         }
@@ -464,9 +469,11 @@
       updateSkipBtn();
     }
 
-    // כפתור הדילוג מוצג רק למנהל ורק כשיש שאלה פעילה
+    // כפתורי המנהל מתחלפים לפי מצב המשחק:
+    // באמצע שאלה - רק "דלג" | בין שאלות - רק "השאלה הבאה" | אחרי סיום - רק "התחל מחדש"
     function updateSkipBtn() {
-      document.getElementById('skip-btn').classList.toggle('hidden', !(isHost && roundActive));
+      document.getElementById('skip-btn').classList.toggle('hidden', !(isHost && roundActive && !gameEnded));
+      document.getElementById('next-q-btn').classList.toggle('hidden', roundActive || gameEnded);
     }
 
     function skipQuestion() {
@@ -555,6 +562,7 @@
     socket.on('new_question', (data) => {
       hasVotedThisRound = false;
       roundActive = true;
+      gameEnded = false;
 
       document.getElementById('results-area').classList.add('hidden');
       document.getElementById('voting-area').classList.remove('hidden');
@@ -638,6 +646,7 @@
 
     socket.on('game_over', (data) => {
       roundActive = false;
+      gameEnded = true;
       updateSkipBtn();
       document.getElementById('voting-area').classList.add('hidden');
       const resultsArea = document.getElementById('results-area');
