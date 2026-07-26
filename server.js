@@ -291,7 +291,7 @@ const rawQuestions = [
   "עם מי הכי כיף ללכת להופעה?",
   "מי יביא לטיול את התרופה שאף אחד לא חשב לקחת?",
   "מי הכי סביר שיזמין את המנה הכי יקרה בתפריט בלי להסתכל על המחיר?",
-  "מי יבזבז 20 דקות על בחירת פילטר לתמונה?",
+  "מי יבזבז 20 דקות עלבחירת פילטר לתמונה?",
   "מי יגיד 'אני תוך 5 דקות שם' כשהוא עוד במיטה?",
   "מי הכי סביר שיצא מהסופר עם עודף של 100 שקל ויחזור להחזיר אותו?",
   "מי ינסה לשכנע את כולם שקפה בלי סוכר זה בעצם טעים?",
@@ -526,6 +526,8 @@ io.on('connection', (socket) => {
       total: MAX_QUESTIONS,
       players: getPlayersList(room)
     });
+
+    io.to(room.id).emit('update_players', getPlayersList(room));
   });
 
   socket.on('submit_vote', (vote) => {
@@ -567,8 +569,6 @@ io.on('connection', (socket) => {
     room.currentQuestionIndex = 0;
     room.questionsPlayed = 0;
 
-    io.to(room.id).emit('update_players', getPlayersList(room));
-
     const q = room.activeQuestions[room.currentQuestionIndex];
     room.questionsPlayed++;
     room.currentQuestionIndex++;
@@ -579,6 +579,8 @@ io.on('connection', (socket) => {
       total: MAX_QUESTIONS,
       players: getPlayersList(room)
     });
+
+    io.to(room.id).emit('update_players', getPlayersList(room));
   });
 
   socket.on('disconnect', () => {
@@ -665,6 +667,8 @@ function calculateResults(room) {
       playersList: playersList
     });
   }
+
+  io.to(room.id).emit('update_players', playersList);
 }
 
 const PORT = process.env.PORT || 10000;
