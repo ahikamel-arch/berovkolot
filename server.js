@@ -24,6 +24,8 @@ app.get('/display.html', (req, res) => {
 
 const TARGET_SCORE = 15;  
 const MAX_QUESTIONS = 25;
+// חלון חסד לחיבור מחדש: כשטלפון ננעל / הרשת נופלת לרגע, לא מוחקים את השחקן מיד
+const DISCONNECT_GRACE_MS = Number(process.env.DISCONNECT_GRACE_MS) || 60000;
 
 const rawQuestions = [
   "מי יראה את הפח מלא ויצא לזרוק אותו?",
@@ -396,9 +398,80 @@ function getPlayersList(room) {
       name: p.name,
       score: p.score,
       hasVoted: p.currentVote !== null,
-      isHost: p.id === room.hostSocketId
+      isHost: p.id === room.hostSocketId,
+      connected: p.connected !== false
     }))
     .sort((a, b) => b.score - a.score);
+}
+
+// חיבור מחדש: מצמידים את הסוקט החדש לשחקן הקיים (שומר ניקוד, שומר תפקיד מנהל)
+function rebindPlayer(room, player, socket) {
+  const oldId = player.id;
+  if (player.removalTimer) {
+    clearTimeout(player.removalTimer);
+    player.removalTimer = null;
+  }
+  room.players.delete(oldId);
+  player.id = socket.id;
+  player.connected = true;
+  room.players.set(socket.id, player);
+  if (room.hostSocketId === oldId) {
+    room.hostSocketId = socket.id;
+  }
+  socket.join(room.id);
+  socket.roomId = room.id;
+  socket.playerName = player.name;
+}
+
+// כל המידע שהלקוח צריך כדי לשחזר את המסך אחרי חיבור מחדש
+function buildResumePayload(room, player) {
+  return {
+    roomId: room.id,
+    isHost: room.hostSocketId === player.id,
+    roundActive: room.roundActive,
+    question: room.currentQuestion,
+    qIndex: room.questionsPlayed,
+    total: MAX_QUESTIONS,
+    myVote: player.currentVote,
+    players: getPlayersList(room)
+  };
+}
+
+function resumePlayer(room, player, socket) {
+  rebindPlayer(room, player, socket);
+  socket.emit('rejoin_success', buildResumePayload(room, player));
+  io.to(room.id).emit('update_players', getPlayersList(room));
+  if (room.hostSocketId === socket.id) {
+    socket.emit('pending_players_update', getPendingList(room));
+  }
+  broadcastRoomList();
+}
+
+// הסרה סופית של שחקן שלא חזר בתוך חלון החסד
+function finalizeRemoval(room, player) {
+  if (!rooms.has(room.id)) return;
+  if (player.connected) return; // הספיק לחזור בינתיים
+  if (!room.players.has(player.id)) return;
+
+  room.players.delete(player.id);
+
+  if (room.players.size === 0) {
+    rooms.delete(room.id);
+    broadcastRoomList();
+    return;
+  }
+
+  if (player.id === room.hostSocketId) {
+    const remaining = Array.from(room.players.values());
+    const newHost = remaining.find(p => p.connected) || remaining[0];
+    room.hostSocketId = newHost.id;
+    io.to(room.hostSocketId).emit('host_status', true);
+    io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
+  }
+
+  io.to(room.id).emit('update_players', getPlayersList(room));
+  broadcastRoomList();
+  checkRoundCompletion(room);
 }
 
 function getPendingList(room) {
@@ -443,7 +516,9 @@ io.on('connection', (socket) => {
       number: room.nextPlayerNumber++,
       name: cleanHostName,
       score: 0,
-      currentVote: null
+      currentVote: null,
+      connected: true,
+      removalTimer: null
     };
 
     room.players.set(socket.id, hostPlayer);
@@ -468,11 +543,21 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // מניעת שמות כפולים - ההצבעות מזוהות לפי שם, ולכן כפילות שוברת את הספירה
-    const nameTaken =
-      Array.from(room.players.values()).some(p => p.name === cleanName) ||
-      Array.from(room.pendingPlayers.values()).some(p => p.name === cleanName);
-    if (nameTaken) {
+    // אם שחקן עם השם הזה קיים אבל מנותק - זה חיבור מחדש (רענון דף / נפילת רשת)
+    const existing = Array.from(room.players.values()).find(p => p.name === cleanName);
+    if (existing) {
+      const stillAlive = existing.connected && io.sockets.sockets.get(existing.id);
+      if (stillAlive) {
+        socket.emit('room_error', `השם "${cleanName}" כבר תפוס בחדר הזה, בחר שם אחר.`);
+        return;
+      }
+      // חוזר למשחק בלי צורך באישור מחדש - שומר את הניקוד שלו
+      resumePlayer(room, existing, socket);
+      return;
+    }
+
+    const namePending = Array.from(room.pendingPlayers.values()).some(p => p.name === cleanName);
+    if (namePending) {
       socket.emit('room_error', `השם "${cleanName}" כבר תפוס בחדר הזה, בחר שם אחר.`);
       return;
     }
@@ -484,6 +569,32 @@ io.on('connection', (socket) => {
 
     socket.emit('waiting_for_approval');
     io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
+  });
+
+  // חיבור מחדש אוטומטי - הלקוח שולח את זה בעצמו כשהסוקט מתחבר מחדש
+  socket.on('rejoin_room', ({ roomId, playerName }) => {
+    const room = rooms.get((roomId || '').trim());
+    const cleanName = (playerName || '').trim();
+
+    if (!room || !cleanName) {
+      socket.emit('rejoin_failed');
+      return;
+    }
+
+    const existing = Array.from(room.players.values()).find(p => p.name === cleanName);
+    if (!existing) {
+      socket.emit('rejoin_failed');
+      return;
+    }
+
+    // אם השחקן הזה כבר מחובר מסוקט אחר חי - לא נותנים להשתלט
+    const stillAlive = existing.connected && existing.id !== socket.id && io.sockets.sockets.get(existing.id);
+    if (stillAlive) {
+      socket.emit('rejoin_failed');
+      return;
+    }
+
+    resumePlayer(room, existing, socket);
   });
 
   socket.on('approve_player', (applicantSocketId) => {
@@ -499,7 +610,9 @@ io.on('connection', (socket) => {
         number: room.nextPlayerNumber++,
         name: pendingPlayer.name,
         score: 0,
-        currentVote: null
+        currentVote: null,
+        connected: true,
+        removalTimer: null
       };
 
       const targetSocket = io.sockets.sockets.get(applicantSocketId);
@@ -597,12 +710,11 @@ io.on('connection', (socket) => {
 
     player.currentVote = vote;
 
-    const totalList = getPlayersList(room);
-    const total = totalList.length;
-    const votedCount = Array.from(room.players.values()).filter(p => p.currentVote !== null).length;
+    const connectedPlayers = Array.from(room.players.values()).filter(p => p.connected);
+    const votedCount = connectedPlayers.filter(p => p.currentVote !== null).length;
 
-    io.to(room.id).emit('update_players', totalList);
-    io.to(room.id).emit('vote_progress', { votedCount, total });
+    io.to(room.id).emit('update_players', getPlayersList(room));
+    io.to(room.id).emit('vote_progress', { votedCount, total: connectedPlayers.length });
 
     checkRoundCompletion(room);
   });
@@ -649,36 +761,33 @@ io.on('connection', (socket) => {
     const room = rooms.get(socket.roomId);
     if (!room) return;
 
-    room.pendingPlayers.delete(socket.id);
-    room.players.delete(socket.id);
-
-    if (socket.id === room.hostSocketId) {
-      const remainingPlayers = Array.from(room.players.keys());
-      if (remainingPlayers.length > 0) {
-        room.hostSocketId = remainingPlayers[0];
-        io.to(room.hostSocketId).emit('host_status', true);
-      } else {
-        rooms.delete(room.id);
-        broadcastRoomList();
-        return;
-      }
+    if (room.pendingPlayers.has(socket.id)) {
+      room.pendingPlayers.delete(socket.id);
+      io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
     }
 
-    io.to(room.id).emit('update_players', getPlayersList(room));
-    io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
-    broadcastRoomList();
+    const player = room.players.get(socket.id);
+    if (!player) return;
 
-    // אם שחקן עזב באמצע שאלה - ייתכן שכל הנותרים כבר הצביעו והסיבוב צריך להסתיים
+    // לא מוחקים מיד! טלפון שננעל או רשת שנפלה לרגע גורמים לניתוק זמני.
+    // מסמנים כמנותק ונותנים חלון חסד לחזור - אם לא חזר, מסירים סופית.
+    player.connected = false;
+    if (player.removalTimer) clearTimeout(player.removalTimer);
+    player.removalTimer = setTimeout(() => finalizeRemoval(room, player), DISCONNECT_GRACE_MS);
+
+    io.to(room.id).emit('update_players', getPlayersList(room));
+
+    // אם כל שאר המחוברים כבר הצביעו - הסיבוב מסתיים ולא נתקע בגללו
     checkRoundCompletion(room);
   });
 });
 
 function checkRoundCompletion(room) {
   if (!room || !room.roundActive) return;
-  const total = room.players.size;
-  if (total === 0) return;
-  const votedCount = Array.from(room.players.values()).filter(p => p.currentVote !== null).length;
-  if (votedCount >= total) {
+  const connectedPlayers = Array.from(room.players.values()).filter(p => p.connected);
+  if (connectedPlayers.length === 0) return;
+  const allVoted = connectedPlayers.every(p => p.currentVote !== null);
+  if (allVoted) {
     calculateResults(room);
   }
 }
