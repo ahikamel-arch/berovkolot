@@ -107,9 +107,112 @@
     .waiting-msg { text-align: center; color: #e67e22; font-weight: bold; margin-top: 15px; padding: 10px; background: #fef5e7; border-radius: 8px; }
     .error-msg { text-align: center; color: #e74c3c; font-weight: bold; margin-top: 10px; }
     .hidden { display: none !important; }
+
+    /* מסך כללים */
+    .help-btn {
+      width: auto;
+      background: transparent;
+      border: 2px solid rgba(255,255,255,0.6);
+      color: white;
+      border-radius: 50%;
+      font-size: 16px;
+      font-weight: bold;
+      padding: 2px 10px;
+      margin: 0 0 0 8px;
+      cursor: pointer;
+    }
+    .help-fab {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: #8e44ad;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      z-index: 2000;
+      padding: 0;
+      margin: 0;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 3000;
+      padding: 20px;
+    }
+    .modal-box {
+      background: white;
+      border-radius: 14px;
+      padding: 22px;
+      max-width: 480px;
+      width: 100%;
+      max-height: 85vh;
+      overflow-y: auto;
+      text-align: right;
+    }
+    .modal-box h2 { text-align: center; margin-bottom: 10px; }
+    .modal-box h4 { margin: 16px 0 6px 0; color: #8e44ad; text-align: right; }
+    .modal-box p { color: #444; line-height: 1.6; margin: 4px 0; }
+    .score-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    .score-table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+    .score-table td:last-child { text-align: left; font-weight: bold; white-space: nowrap; }
+    .score-plus { color: #27ae60; }
+    .score-minus { color: #e74c3c; }
+    .score-zero { color: #7f8c8d; }
   </style>
 </head>
 <body>
+
+  <!-- כפתור כללים צף -->
+  <button class="help-fab" onclick="toggleRules(true)" title="כללי המשחק">?</button>
+
+  <!-- חלונית כללים -->
+  <div id="rulesModal" class="modal-overlay hidden" onclick="if(event.target===this) toggleRules(false)">
+    <div class="modal-box">
+      <h2>📜 איך משחקים?</h2>
+
+      <h4>🎮 מהלך המשחק</h4>
+      <p>בכל סיבוב מוצגת שאלה ("מי הכי סביר ש..."), וכל שחקן מצביע בסתר על מי מהחבורה הכי מתאים לתשובה. כשכולם הצביעו - התוצאות נחשפות! המנהל (👑) מעביר לשאלה הבאה.</p>
+
+      <h4>🎯 המטרה</h4>
+      <p>לנחש איך <b>הרוב</b> יצביע. לא מה אתם חושבים - מה <b>כולם</b> חושבים!</p>
+
+      <h4>💰 שיטת הניקוד</h4>
+      <table class="score-table">
+        <tr>
+          <td>הצבעת כמו הרוב</td>
+          <td class="score-plus">+1</td>
+        </tr>
+        <tr>
+          <td>הצבעת על עצמך - והרוב באמת בחר בך 😎</td>
+          <td class="score-plus">+2</td>
+        </tr>
+        <tr>
+          <td>הצבעת על עצמך - אבל הרוב בחר מישהו אחר 😅</td>
+          <td class="score-minus">-1</td>
+        </tr>
+        <tr>
+          <td>תיקו (אין רוב ברור)</td>
+          <td class="score-zero">0 לכולם</td>
+        </tr>
+      </table>
+      <p style="font-size: 14px; color: #7f8c8d;">* בתיקו, מי שהצביע לעצמו ולא היה בין המובילים מאבד נקודה. הניקוד אף פעם לא יורד מתחת ל-0.</p>
+
+      <h4>🏆 ניצחון</h4>
+      <p>הראשון שמגיע ל-<b>15 נקודות</b> מנצח! אם אף אחד לא הגיע - המוביל אחרי <b>25 שאלות</b> לוקח את התואר.</p>
+
+      <button onclick="toggleRules(false)" style="margin-top: 15px;">הבנתי, בואו נשחק! 🚀</button>
+    </div>
+  </div>
 
   <div id="topBar" class="top-bar hidden">
     <span>🗳️ ברוב קולות <span id="roomBadge" style="font-size:0.85em; opacity:0.8;"></span></span>
@@ -175,6 +278,9 @@
       <div class="question-text" id="questionText">טוען שאלה...</div>
       <div id="optionsContainer"></div>
       <div id="voteStatus" style="text-align:center; margin-top:10px; color:#e67e22; font-weight:bold;"></div>
+      <div class="host-only hidden">
+        <button onclick="skipQuestion()" style="background:#f39c12; font-size:14px; padding:8px;">⏭️ דלג על השאלה (מנהל)</button>
+      </div>
     </div>
 
     <!-- מסך תוצאות סיבוב -->
@@ -300,6 +406,10 @@
 
     function requestRooms() {
       socket.emit('get_rooms');
+    }
+
+    function toggleRules(show) {
+      document.getElementById('rulesModal').classList.toggle('hidden', !show);
     }
 
     socket.on('rooms_list_update', (roomsList) => {
@@ -456,6 +566,7 @@
 
     function nextQuestion() { socket.emit('next_question', { roomId: currentRoom }); }
     function restartGame() { socket.emit('restart_game', { roomId: currentRoom }); }
+    function skipQuestion() { socket.emit('skip_question', { roomId: currentRoom }); }
 
     socket.on('update_players', (players) => {
       renderScoreboard(players);
@@ -472,7 +583,7 @@
 
       document.getElementById('questionNum').innerText = 'שאלה ' + data.qIndex + ' מתוך ' + data.total;
       document.getElementById('questionText').innerText = data.question.text;
-      document.getElementById('voteStatus').innerText = '';
+      document.getElementById('voteStatus').innerText = data.skipped ? 'המנהל דילג על השאלה הקודמת 🙃' : '';
 
       const container = document.getElementById('optionsContainer');
       container.innerHTML = '';
