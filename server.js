@@ -11,7 +11,6 @@ const io = new Server(server, {
 
 app.use(express.static('public'));
 
-// נתיבים מפורשים למסך המקרן
 app.get('/display', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'display.html'));
 });
@@ -20,9 +19,9 @@ app.get('/display.html', (req, res) => {
 });
 
 const TARGET_SCORE = 15;  
-const MAX_QUESTIONS = 25; // מספר השאלות שישוחקו בסיבוב אחד מתוך המאגר
+const MAX_QUESTIONS = 25;
 
-// 🎯 מאגר מלא של 350 שאלות "ברוב קולות" (כולל שאלות מצחיקות, אישיות וחיוביות)
+// 🎯 מאגר 350 השאלות המלא
 const rawQuestions = [
   // שאלות חיוביות, מפרגנות ומעצימות:
   "מי יראה את הפח מלא ויצא לזרוק אותו?",
@@ -344,7 +343,7 @@ const rawQuestions = [
   "מי ינצח במשחק 'ברוב קולות' היום?"
 ];
 
-// פונקציה לערבוב אקראי אמין (Fisher-Yates)
+// פונקציית ערבוב אקראי
 function shuffleArray(array) {
   const arr = [...array];
   for (let i = arr.length - 1; i > 0; i--) {
@@ -354,150 +353,266 @@ function shuffleArray(array) {
   return arr;
 }
 
-let activeQuestions = [];
-let currentQuestionIndex = 0;
-let questionsPlayed = 0;
+// 🏠 ניהול החדרים במערכת
+const rooms = new Map(); // roomId -> RoomObject
 
-function resetAndShuffleQuestions() {
-  // ערבוב אקטיבי של כל 350 השאלות בכל תחילת משחק
+function createRoom(roomId, hostSocketId) {
   const shuffledText = shuffleArray(rawQuestions);
-  activeQuestions = shuffledText.map((qText, index) => ({
-    id: index + 1,
-    type: "PLAYER_SELECT",
-    text: qText
-  }));
-  currentQuestionIndex = 0;
-  questionsPlayed = 0;
+  const room = {
+    id: roomId,
+    hostSocketId: hostSocketId,
+    players: new Map(),        // שחקנים מאושרים
+    pendingPlayers: new Map(), // שחקנים שממתינים לאישור
+    nextPlayerNumber: 1,
+    activeQuestions: shuffledText.map((qText, index) => ({
+      id: index + 1,
+      type: "PLAYER_SELECT",
+      text: qText
+    })),
+    currentQuestionIndex: 0,
+    questionsPlayed: 0
+  };
+  rooms.set(roomId, room);
+  return room;
 }
 
-// ערבוב ראשוני בעליית השרת
-resetAndShuffleQuestions();
-
-let playersMap = new Map();
-let nextPlayerNumber = 1;
-let hostSocketId = null; 
-
-function getPlayersList() {
-  return Array.from(playersMap.values())
+function getPlayersList(room) {
+  if (!room) return [];
+  return Array.from(room.players.values())
     .map(p => ({
       id: p.id,
       number: p.number,
       name: p.name,
       score: p.score,
       hasVoted: p.currentVote !== null,
-      isHost: p.id === hostSocketId
+      isHost: p.id === room.hostSocketId
     }))
     .sort((a, b) => b.score - a.score);
 }
 
-io.on('connection', (socket) => {
-  socket.emit('update_players', getPlayersList());
+function getPendingList(room) {
+  if (!room) return [];
+  return Array.from(room.pendingPlayers.values()).map(p => ({
+    id: p.id,
+    name: p.name
+  }));
+}
 
-  socket.on('join_game', (playerName) => {
-    if (!hostSocketId || playersMap.size === 0) {
-      hostSocketId = socket.id;
+io.on('connection', (socket) => {
+
+  // 1. יצירת חדר חדש על ידי מנהל
+  socket.on('create_room', ({ roomId, hostName }) => {
+    const cleanRoomId = roomId.trim().toLowerCase();
+    
+    if (rooms.has(cleanRoomId)) {
+      socket.emit('room_error', 'שם החדר תפוס, בחר שם אחר.');
+      return;
     }
 
-    const newPlayer = {
+    const room = createRoom(cleanRoomId, socket.id);
+    socket.join(cleanRoomId);
+    socket.roomId = cleanRoomId;
+
+    const hostPlayer = {
       id: socket.id,
-      number: nextPlayerNumber++,
-      name: playerName,
+      number: room.nextPlayerNumber++,
+      name: hostName,
       score: 0,
       currentVote: null
     };
 
-    playersMap.set(socket.id, newPlayer);
-    
-    socket.emit('host_status', socket.id === hostSocketId);
-    io.emit('update_players', getPlayersList());
+    room.players.set(socket.id, hostPlayer);
+
+    socket.emit('room_created', { roomId: cleanRoomId, isHost: true });
+    io.to(cleanRoomId).emit('update_players', getPlayersList(room));
   });
 
-  socket.on('next_question', () => {
-    if (socket.id !== hostSocketId) return;
+  // 2. בקשת הצטרפות לחדר (נכנס לחדר ההמתנה)
+  socket.on('join_room_request', ({ roomId, playerName }) => {
+    const cleanRoomId = roomId.trim().toLowerCase();
+    const room = rooms.get(cleanRoomId);
 
-    playersMap.forEach(p => p.currentVote = null);
-
-    // אם הגענו לסוף המערך, נערבב מחדש
-    if (currentQuestionIndex >= activeQuestions.length) {
-      resetAndShuffleQuestions();
+    if (!room) {
+      socket.emit('room_error', 'החדר לא קיים. בדוק את שם החדר שוב.');
+      return;
     }
 
-    const q = activeQuestions[currentQuestionIndex];
-    questionsPlayed++;
-    currentQuestionIndex++;
+    socket.roomId = cleanRoomId;
+    socket.playerName = playerName;
 
-    io.emit('new_question', {
+    // הוספה לרשימת ההמתנה של החדר
+    room.pendingPlayers.set(socket.id, { id: socket.id, name: playerName });
+
+    socket.emit('waiting_for_approval');
+    
+    // עדכון המנהל שיש בקשת הצטרפות חדשה
+    io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
+  });
+
+  // 3. המנהל מאשר שחקן מהמתנה
+  socket.on('approve_player', (applicantSocketId) => {
+    const room = rooms.get(socket.roomId);
+    if (!room || socket.id !== room.hostSocketId) return;
+
+    const pendingPlayer = room.pendingPlayers.get(applicantSocketId);
+    if (pendingPlayer) {
+      room.pendingPlayers.delete(applicantSocketId);
+
+      const approvedPlayer = {
+        id: applicantSocketId,
+        number: room.nextPlayerNumber++,
+        name: pendingPlayer.name,
+        score: 0,
+        currentVote: null
+      };
+
+      room.players.set(applicantSocketId, approvedPlayer);
+
+      const targetSocket = io.sockets.sockets.get(applicantSocketId);
+      if (targetSocket) {
+        targetSocket.join(room.id);
+        targetSocket.emit('join_approved', { roomId: room.id, isHost: false });
+      }
+
+      io.to(room.id).emit('update_players', getPlayersList(room));
+      io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
+    }
+  });
+
+  // 4. המנהל דוחה שחקן מהמתנה
+  socket.on('reject_player', (applicantSocketId) => {
+    const room = rooms.get(socket.roomId);
+    if (!room || socket.id !== room.hostSocketId) return;
+
+    if (room.pendingPlayers.has(applicantSocketId)) {
+      room.pendingPlayers.delete(applicantSocketId);
+
+      const targetSocket = io.sockets.sockets.get(applicantSocketId);
+      if (targetSocket) {
+        targetSocket.emit('join_rejected', 'המנהל דחה את בקשת ההצטרפות שלך.');
+      }
+
+      io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
+    }
+  });
+
+  // 5. מעבר לשאלה הבאה בחדר
+  socket.on('next_question', () => {
+    const room = rooms.get(socket.roomId);
+    if (!room || socket.id !== room.hostSocketId) return;
+
+    room.players.forEach(p => p.currentVote = null);
+
+    if (room.currentQuestionIndex >= room.activeQuestions.length) {
+      const shuffledText = shuffleArray(rawQuestions);
+      room.activeQuestions = shuffledText.map((qText, index) => ({
+        id: index + 1,
+        type: "PLAYER_SELECT",
+        text: qText
+      }));
+      room.currentQuestionIndex = 0;
+    }
+
+    const q = room.activeQuestions[room.currentQuestionIndex];
+    room.questionsPlayed++;
+    room.currentQuestionIndex++;
+
+    io.to(room.id).emit('new_question', {
       question: q,
-      qIndex: questionsPlayed,
+      qIndex: room.questionsPlayed,
       total: MAX_QUESTIONS,
-      players: getPlayersList()
+      players: getPlayersList(room)
     });
   });
 
+  // 6. שליחת הצבעה בתוך החדר
   socket.on('submit_vote', (vote) => {
-    const player = playersMap.get(socket.id);
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    const player = room.players.get(socket.id);
     if (player) {
       player.currentVote = vote;
     }
 
-    const totalList = getPlayersList();
+    const totalList = getPlayersList(room);
     const total = totalList.length;
-    const votedCount = Array.from(playersMap.values()).filter(p => p.currentVote !== null).length;
+    const votedCount = Array.from(room.players.values()).filter(p => p.currentVote !== null).length;
 
-    io.emit('update_players', totalList);
-    io.emit('vote_progress', { votedCount, total });
+    io.to(room.id).emit('update_players', totalList);
+    io.to(room.id).emit('vote_progress', { votedCount, total });
 
     if (votedCount >= total && total > 0) {
-      calculateResults();
+      calculateResults(room);
     }
   });
 
+  // 7. איפוס ומתחיל משחק מחדש בחדר
   socket.on('restart_game', () => {
-    if (socket.id !== hostSocketId) return;
+    const room = rooms.get(socket.roomId);
+    if (!room || socket.id !== room.hostSocketId) return;
 
-    playersMap.forEach(p => {
+    room.players.forEach(p => {
       p.score = 0;
       p.currentVote = null;
     });
 
-    // ערבוב חדש לחלוטין מתוך כל השאלות בתחילת משחק
-    resetAndShuffleQuestions();
-    
-    io.emit('update_players', getPlayersList());
-    
-    const q = activeQuestions[currentQuestionIndex];
-    questionsPlayed++;
-    currentQuestionIndex++;
+    const shuffledText = shuffleArray(rawQuestions);
+    room.activeQuestions = shuffledText.map((qText, index) => ({
+      id: index + 1,
+      type: "PLAYER_SELECT",
+      text: qText
+    }));
+    room.currentQuestionIndex = 0;
+    room.questionsPlayed = 0;
 
-    io.emit('new_question', {
+    io.to(room.id).emit('update_players', getPlayersList(room));
+
+    const q = room.activeQuestions[room.currentQuestionIndex];
+    room.questionsPlayed++;
+    room.currentQuestionIndex++;
+
+    io.to(room.id).emit('new_question', {
       question: q,
-      qIndex: questionsPlayed,
+      qIndex: room.questionsPlayed,
       total: MAX_QUESTIONS,
-      players: getPlayersList()
+      players: getPlayersList(room)
     });
   });
 
+  // 8. התנתקות
   socket.on('disconnect', () => {
-    playersMap.delete(socket.id);
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
 
-    if (socket.id === hostSocketId) {
-      const remainingPlayers = Array.from(playersMap.keys());
-      hostSocketId = remainingPlayers.length > 0 ? remainingPlayers[0] : null;
-      
-      if (hostSocketId) {
-        io.to(hostSocketId).emit('host_status', true);
+    // הסרה ממתמנים או משחקנים
+    room.pendingPlayers.delete(socket.id);
+    room.players.delete(socket.id);
+
+    // אם המנהל התנתק - מעבירים מנהל לשחקן הבא
+    if (socket.id === room.hostSocketId) {
+      const remainingPlayers = Array.from(room.players.keys());
+      if (remainingPlayers.length > 0) {
+        room.hostSocketId = remainingPlayers[0];
+        io.to(room.hostSocketId).emit('host_status', true);
+      } else {
+        // אם החדר ריק לגמרי - נוחקים אותו
+        rooms.delete(room.id);
+        return;
       }
     }
 
-    io.emit('update_players', getPlayersList());
+    io.to(room.id).emit('update_players', getPlayersList(room));
+    io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
   });
 });
 
-function calculateResults() {
+// פונקציית חישוב תוצאות פר חדר
+function calculateResults(room) {
   const votes = {};
 
-  playersMap.forEach(p => { votes[p.name] = 0; });
-  playersMap.forEach(p => {
+  room.players.forEach(p => { votes[p.name] = 0; });
+  room.players.forEach(p => {
     if (p.currentVote) {
       votes[p.currentVote] = (votes[p.currentVote] || 0) + 1;
     }
@@ -518,7 +633,7 @@ function calculateResults() {
   const isTie = topVotedPlayers.length !== 1;
   const winnerName = isTie ? null : topVotedPlayers[0];
 
-  playersMap.forEach(p => {
+  room.players.forEach(p => {
     const votedForSelf = (p.currentVote === p.name);
 
     if (!isTie) {
@@ -534,18 +649,18 @@ function calculateResults() {
     }
   });
 
-  const playersList = getPlayersList();
+  const playersList = getPlayersList(room);
   const topPlayer = playersList[0];
 
-  const isGameOver = (topPlayer && topPlayer.score >= TARGET_SCORE) || questionsPlayed >= MAX_QUESTIONS;
+  const isGameOver = (topPlayer && topPlayer.score >= TARGET_SCORE) || room.questionsPlayed >= MAX_QUESTIONS;
 
   if (isGameOver) {
-    io.emit('game_over', {
+    io.to(room.id).emit('game_over', {
       winner: topPlayer,
       playersList: playersList
     });
   } else {
-    io.emit('show_results', {
+    io.to(room.id).emit('show_results', {
       winningVote: winnerName,
       isTie: isTie,
       votesCount: votes,
