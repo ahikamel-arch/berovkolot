@@ -404,7 +404,13 @@ function getPendingList(room) {
 }
 
 io.on('connection', (socket) => {
+  // שליחת רשימת חדרים מיידית בחיבור ראשוני
   socket.emit('rooms_list_update', getPublicRoomsList());
+
+  // בקשה יזומה של הלקוח לקבלת החדרים
+  socket.on('get_rooms', () => {
+    socket.emit('rooms_list_update', getPublicRoomsList());
+  });
 
   socket.on('create_room', ({ roomId, hostName }) => {
     const cleanRoomId = roomId.trim();
@@ -504,15 +510,7 @@ io.on('connection', (socket) => {
     const reqRoomId = (data && data.roomId) ? data.roomId : socket.roomId;
     const room = rooms.get(reqRoomId);
 
-    if (!room) {
-      console.log('חדר לא נמצא עבור next_question:', reqRoomId);
-      return;
-    }
-
-    if (socket.id !== room.hostSocketId) {
-      console.log('ניסיון מעבר שאלה ע"י שחקן שאינו מנהל');
-      return;
-    }
+    if (!room || socket.id !== room.hostSocketId) return;
 
     socket.roomId = reqRoomId;
     room.players.forEach(p => p.currentVote = null);
