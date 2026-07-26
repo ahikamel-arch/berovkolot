@@ -54,9 +54,9 @@
     .btn-success:hover { background-color: #218838; }
     .btn-danger { background-color: #dc3545; color: white; }
     .btn-danger:hover { background-color: #c82333; }
-    
+
     .hidden { display: none !important; }
-    
+
     .players-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -74,6 +74,7 @@
     }
     .vote-btn:hover { background: #007bff; color: white; }
     .vote-btn.selected { background: #28a745; color: white; border-color: #218838; }
+    .vote-btn:disabled { cursor: default; }
 
     .rooms-list {
       margin: 15px 0;
@@ -138,11 +139,11 @@
   <!-- מסך כניסה -->
   <div id="screen-entry" class="card">
     <h1>🏆 ברוב קולות</h1>
-    <input type="text" id="player-name" placeholder="הכנס את השם שלך">
+    <input type="text" id="player-name" placeholder="הכנס את השם שלך" maxlength="20">
 
     <div style="margin-top: 20px;">
       <h3>צור חדר חדש</h3>
-      <input type="text" id="new-room-id" placeholder="שם החדר ליצירה">
+      <input type="text" id="new-room-id" placeholder="שם החדר ליצירה" maxlength="20">
       <button onclick="createRoom()" class="btn-success">צור חדר כמנהל</button>
     </div>
 
@@ -196,7 +197,7 @@
 
     <!-- בקרות מנהל -->
     <div id="host-controls" class="hidden" style="margin-top: 20px;">
-      <button onclick="nextQuestion()" class="btn-success">השאלה הבאה ➔</button>
+      <button id="next-q-btn" onclick="nextQuestion()" class="btn-success">התחל / השאלה הבאה ➔</button>
       <button onclick="restartGame()" class="btn-danger">התחל משחק מחדש</button>
     </div>
 
@@ -211,8 +212,8 @@
     let isHost = false;
     let myName = '';
     let hasVotedThisRound = false;
+    let roundActive = false; // האם יש כרגע שאלה פתוחה להצבעה
 
-    // ברגע שהחיבור לשרת מוכן - נבקש את החדרים
     socket.on('connect', () => {
       requestRooms();
     });
@@ -223,17 +224,34 @@
 
     socket.on('rooms_list_update', (roomsList) => {
       const container = document.getElementById('rooms-container');
+      container.innerHTML = '';
+
       if (!roomsList || roomsList.length === 0) {
-        container.innerHTML = '<p style="color: #6c757d;">אין חדרים פעילים כרגע</p>';
+        const p = document.createElement('p');
+        p.style.color = '#6c757d';
+        p.innerText = 'אין חדרים פעילים כרגע';
+        container.appendChild(p);
         return;
       }
 
-      container.innerHTML = roomsList.map(r => `
-        <div class="room-item" onclick="selectAndJoinRoom('${r.id}')">
-          <span>🏠 <b>${r.id}</b></span>
-          <span style="font-size: 14px; color: #555;">👥 ${r.count} שחקנים</span>
-        </div>
-      `).join('');
+      roomsList.forEach(r => {
+        const item = document.createElement('div');
+        item.className = 'room-item';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = '🏠 ' + r.id;
+        nameSpan.style.fontWeight = 'bold';
+
+        const countSpan = document.createElement('span');
+        countSpan.style.fontSize = '14px';
+        countSpan.style.color = '#555';
+        countSpan.innerText = '👥 ' + r.count + ' שחקנים';
+
+        item.appendChild(nameSpan);
+        item.appendChild(countSpan);
+        item.onclick = () => selectAndJoinRoom(r.id);
+        container.appendChild(item);
+      });
     });
 
     function createRoom() {
@@ -279,137 +297,193 @@
       document.getElementById('entry-error').innerText = msg;
     });
 
+    // אם המנהל המקורי עזב והשרת מינה אותנו כמנהל חדש
+    socket.on('host_status', (status) => {
+      isHost = status;
+      updateHostUI();
+    });
+
+    function updateHostUI() {
+      const controls = document.getElementById('host-controls');
+      if (isHost) {
+        controls.classList.remove('hidden');
+      } else {
+        controls.classList.add('hidden');
+        document.getElementById('admin-approval-panel').classList.add('hidden');
+      }
+    }
+
     socket.on('pending_players_update', (pendingList) => {
       if (!isHost) return;
       const panel = document.getElementById('admin-approval-panel');
       const listContainer = document.getElementById('pending-list');
+      listContainer.innerHTML = '';
 
       if (pendingList.length > 0) {
         panel.classList.remove('hidden');
-        listContainer.innerHTML = pendingList.map(p => `
-          <div class="pending-item">
-            <span><b>${p.name}</b></span>
-            <div>
-              <button onclick="approve('${p.id}')" class="btn-success">אשר</button>
-              <button onclick="reject('${p.id}')" class="btn-danger">דחה</button>
-            </div>
-          </div>
-        `).join('');
+        pendingList.forEach(p => {
+          const row = document.createElement('div');
+          row.className = 'pending-item';
+
+          const nameSpan = document.createElement('span');
+          nameSpan.style.fontWeight = 'bold';
+          nameSpan.innerText = p.name;
+
+          const btnWrap = document.createElement('div');
+          const approveBtn = document.createElement('button');
+          approveBtn.className = 'btn-success';
+          approveBtn.innerText = 'אשר';
+          approveBtn.onclick = () => socket.emit('approve_player', p.id);
+
+          const rejectBtn = document.createElement('button');
+          rejectBtn.className = 'btn-danger';
+          rejectBtn.innerText = 'דחה';
+          rejectBtn.onclick = () => socket.emit('reject_player', p.id);
+
+          btnWrap.appendChild(approveBtn);
+          btnWrap.appendChild(rejectBtn);
+          row.appendChild(nameSpan);
+          row.appendChild(btnWrap);
+          listContainer.appendChild(row);
+        });
       } else {
         panel.classList.add('hidden');
       }
     });
 
-    function approve(id) { socket.emit('approve_player', id); }
-    function reject(id) { socket.emit('reject_player', id); }
-
     function showGameScreen() {
       document.getElementById('screen-entry').classList.add('hidden');
       document.getElementById('screen-game').classList.remove('hidden');
-      document.getElementById('room-title').innerText = `חדר: ${currentRoom}`;
-      if (isHost) {
-        document.getElementById('host-controls').classList.remove('hidden');
-      }
+      document.getElementById('room-title').innerText = 'חדר: ' + currentRoom;
+      updateHostUI();
     }
 
     function renderVotingButtons(players) {
       const options = document.getElementById('voting-options');
-      options.innerHTML = players.map(p => 
-        `<button class="vote-btn" onclick="vote('${p.name}')">${p.name}</button>`
-      ).join('');
+      options.innerHTML = '';
+      players.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'vote-btn';
+        btn.innerText = p.name;
+        btn.onclick = () => vote(p.name, btn);
+        options.appendChild(btn);
+      });
     }
 
     socket.on('update_players', (players) => {
       const list = document.getElementById('players-list');
-      list.innerHTML = players.map(p => `
-        <li>
-          <span>${p.name} ${p.isHost ? '👑' : ''}</span>
-          <span>${p.score} נק' ${p.hasVoted ? '✅' : '⏳'}</span>
-        </li>
-      `).join('');
+      list.innerHTML = '';
+      players.forEach(p => {
+        const li = document.createElement('li');
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = p.name + (p.isHost ? ' 👑' : '');
+        const scoreSpan = document.createElement('span');
+        scoreSpan.innerText = p.score + " נק' " + (p.hasVoted ? '✅' : '⏳');
+        li.appendChild(nameSpan);
+        li.appendChild(scoreSpan);
+        list.appendChild(li);
+      });
 
-      if (!hasVotedThisRound) {
+      // מרעננים את כפתורי ההצבעה רק אם יש שאלה פעילה ועוד לא הצבענו
+      // (כדי שלא יופיעו כפתורי הצבעה בלובי לפני שהמשחק התחיל)
+      if (roundActive && !hasVotedThisRound) {
         renderVotingButtons(players);
       }
     });
 
     socket.on('new_question', (data) => {
       hasVotedThisRound = false;
+      roundActive = true;
 
       document.getElementById('results-area').classList.add('hidden');
       document.getElementById('voting-area').classList.remove('hidden');
       document.getElementById('vote-status').innerText = '';
 
-      document.getElementById('q-progress').innerText = `שאלה ${data.qIndex}/${data.total}`;
+      document.getElementById('q-progress').innerText = 'שאלה ' + data.qIndex + '/' + data.total;
       document.getElementById('question-text').innerText = data.question.text;
 
       renderVotingButtons(data.players);
     });
 
     socket.on('vote_progress', (data) => {
-      document.getElementById('vote-status').innerText = `הצביעו ${data.votedCount} מתוך ${data.total} שחקנים`;
+      document.getElementById('vote-status').innerText = 'הצביעו ' + data.votedCount + ' מתוך ' + data.total + ' שחקנים';
     });
 
-    function vote(candidateName) {
-      if (hasVotedThisRound) return;
+    function vote(candidateName, clickedBtn) {
+      if (hasVotedThisRound || !roundActive) return;
       hasVotedThisRound = true;
       socket.emit('submit_vote', candidateName);
 
       const buttons = document.querySelectorAll('.vote-btn');
       buttons.forEach(btn => {
-        if (btn.innerText.trim() === candidateName) {
+        if (btn === clickedBtn) {
           btn.classList.add('selected');
+          btn.style.opacity = '1';
+        } else {
+          btn.style.opacity = '0.5';
         }
         btn.disabled = true;
-        btn.style.opacity = btn.innerText.trim() === candidateName ? '1' : '0.5';
       });
     }
 
     socket.on('show_results', (data) => {
+      roundActive = false;
       document.getElementById('voting-area').classList.add('hidden');
       const resultsArea = document.getElementById('results-area');
       resultsArea.classList.remove('hidden');
 
       const title = document.getElementById('winner-title');
       if (data.isTie) {
-        title.innerText = "🤝 יש תיקו! אין ניקוד בתיקו.";
+        title.innerText = '🤝 יש תיקו! אין ניקוד בתיקו.';
       } else {
-        title.innerText = `🎉 הרוב קבע: ${data.winningVote}!`;
+        title.innerText = '🎉 הרוב קבע: ' + data.winningVote + '!';
       }
 
-      let breakdownHtml = '<b>תפזורת ההצבעות:</b><ul style="padding-right: 20px;">';
+      const breakdown = document.getElementById('votes-breakdown');
+      breakdown.innerHTML = '';
+      const bTitle = document.createElement('b');
+      bTitle.innerText = 'תפזורת ההצבעות:';
+      breakdown.appendChild(bTitle);
+      const ul = document.createElement('ul');
+      ul.style.paddingRight = '20px';
       for (const [name, count] of Object.entries(data.votesCount)) {
-        breakdownHtml += `<li>${name}: ${count} קולות</li>`;
+        const li = document.createElement('li');
+        li.innerText = name + ': ' + count + ' קולות';
+        ul.appendChild(li);
       }
-      breakdownHtml += '</ul>';
-
-      document.getElementById('votes-breakdown').innerHTML = breakdownHtml;
+      breakdown.appendChild(ul);
 
       if (data.playersList) {
         const list = document.getElementById('players-list');
-        list.innerHTML = data.playersList.map(p => `
-          <li>
-            <span>${p.name} ${p.isHost ? '👑' : ''}</span>
-            <span>${p.score} נק'</span>
-          </li>
-        `).join('');
+        list.innerHTML = '';
+        data.playersList.forEach(p => {
+          const li = document.createElement('li');
+          const nameSpan = document.createElement('span');
+          nameSpan.innerText = p.name + (p.isHost ? ' 👑' : '');
+          const scoreSpan = document.createElement('span');
+          scoreSpan.innerText = p.score + " נק'";
+          li.appendChild(nameSpan);
+          li.appendChild(scoreSpan);
+          list.appendChild(li);
+        });
       }
     });
 
     socket.on('game_over', (data) => {
+      roundActive = false;
       document.getElementById('voting-area').classList.add('hidden');
       const resultsArea = document.getElementById('results-area');
       resultsArea.classList.remove('hidden');
-      document.getElementById('winner-title').innerText = `🏆 המשחק הסתיים! המנצח/ת: ${data.winner.name}!`;
+      document.getElementById('winner-title').innerText = '🏆 המשחק הסתיים! המנצח/ת: ' + data.winner.name + '!';
       document.getElementById('votes-breakdown').innerHTML = '';
     });
 
-    function nextQuestion() { 
-      socket.emit('next_question', { roomId: currentRoom }); 
+    function nextQuestion() {
+      socket.emit('next_question', { roomId: currentRoom });
     }
 
-    function restartGame() { 
-      socket.emit('restart_game', { roomId: currentRoom }); 
+    function restartGame() {
+      socket.emit('restart_game', { roomId: currentRoom });
     }
   </script>
 </body>
