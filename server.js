@@ -9,7 +9,11 @@ const io = new Server(server, {
   cors: { origin: "*" } 
 });
 
-app.use(express.static('public'));
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 app.get('/display', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'display.html'));
@@ -362,7 +366,9 @@ function createRoom(roomId, hostSocketId) {
       text: qText
     })),
     currentQuestionIndex: 0,
-    questionsPlayed: 0
+    questionsPlayed: 0,
+    currentQuestion: null,   // השאלה הפעילה כרגע
+    roundActive: false       // האם מקבלים הצבעות כרגע
   };
   rooms.set(roomId, room);
   broadcastRoomList();
@@ -413,9 +419,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('create_room', ({ roomId, hostName }) => {
-    const cleanRoomId = roomId.trim();
+    const cleanRoomId = (roomId || '').trim();
+    const cleanHostName = (hostName || '').trim();
     if (!cleanRoomId) {
       socket.emit('room_error', 'נא להזין שם חדר תקין.');
+      return;
+    }
+    if (!cleanHostName) {
+      socket.emit('room_error', 'נא להזין שם תקין.');
       return;
     }
     if (rooms.has(cleanRoomId)) {
@@ -430,7 +441,7 @@ io.on('connection', (socket) => {
     const hostPlayer = {
       id: socket.id,
       number: room.nextPlayerNumber++,
-      name: hostName,
+      name: cleanHostName,
       score: 0,
       currentVote: null
     };
@@ -451,10 +462,25 @@ io.on('connection', (socket) => {
       return;
     }
 
-    socket.roomId = cleanRoomId;
-    socket.playerName = playerName;
+    const cleanName = (playerName || '').trim();
+    if (!cleanName) {
+      socket.emit('room_error', 'נא להזין שם תקין.');
+      return;
+    }
 
-    room.pendingPlayers.set(socket.id, { id: socket.id, name: playerName });
+    // מניעת שמות כפולים - ההצבעות מזוהות לפי שם, ולכן כפילות שוברת את הספירה
+    const nameTaken =
+      Array.from(room.players.values()).some(p => p.name === cleanName) ||
+      Array.from(room.pendingPlayers.values()).some(p => p.name === cleanName);
+    if (nameTaken) {
+      socket.emit('room_error', `השם "${cleanName}" כבר תפוס בחדר הזה, בחר שם אחר.`);
+      return;
+    }
+
+    socket.roomId = cleanRoomId;
+    socket.playerName = cleanName;
+
+    room.pendingPlayers.set(socket.id, { id: socket.id, name: cleanName });
 
     socket.emit('waiting_for_approval');
     io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
@@ -476,12 +502,26 @@ io.on('connection', (socket) => {
         currentVote: null
       };
 
-      room.players.set(applicantSocketId, approvedPlayer);
-
       const targetSocket = io.sockets.sockets.get(applicantSocketId);
-      if (targetSocket) {
-        targetSocket.join(room.id);
-        targetSocket.emit('join_approved', { roomId: room.id, isHost: false });
+
+      // אם המבקש התנתק בינתיים - לא מוסיפים "שחקן רפאים" שיתקע את המשחק
+      if (!targetSocket) {
+        io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
+        return;
+      }
+
+      room.players.set(applicantSocketId, approvedPlayer);
+      targetSocket.join(room.id);
+      targetSocket.emit('join_approved', { roomId: room.id, isHost: false });
+
+      // אם מצטרפים באמצע שאלה - שולחים למצטרף את השאלה הנוכחית כדי שלא יתקע במסך ריק
+      if (room.roundActive && room.currentQuestion) {
+        targetSocket.emit('new_question', {
+          question: room.currentQuestion,
+          qIndex: room.questionsPlayed,
+          total: MAX_QUESTIONS,
+          players: getPlayersList(room)
+        });
       }
 
       io.to(room.id).emit('update_players', getPlayersList(room));
@@ -528,6 +568,8 @@ io.on('connection', (socket) => {
     const q = room.activeQuestions[room.currentQuestionIndex];
     room.questionsPlayed++;
     room.currentQuestionIndex++;
+    room.currentQuestion = q;
+    room.roundActive = true;
 
     io.to(room.id).emit('new_question', {
       question: q,
@@ -543,10 +585,17 @@ io.on('connection', (socket) => {
     const room = rooms.get(socket.roomId);
     if (!room) return;
 
+    // לא מקבלים הצבעות כשאין שאלה פעילה (לובי / מסך תוצאות)
+    if (!room.roundActive) return;
+
     const player = room.players.get(socket.id);
-    if (player) {
-      player.currentVote = vote;
-    }
+    if (!player) return;
+
+    // מצביעים רק על שחקן שקיים בחדר
+    const candidateExists = Array.from(room.players.values()).some(p => p.name === vote);
+    if (!candidateExists) return;
+
+    player.currentVote = vote;
 
     const totalList = getPlayersList(room);
     const total = totalList.length;
@@ -555,9 +604,7 @@ io.on('connection', (socket) => {
     io.to(room.id).emit('update_players', totalList);
     io.to(room.id).emit('vote_progress', { votedCount, total });
 
-    if (votedCount >= total && total > 0) {
-      calculateResults(room);
-    }
+    checkRoundCompletion(room);
   });
 
   socket.on('restart_game', (data) => {
@@ -585,6 +632,8 @@ io.on('connection', (socket) => {
     const q = room.activeQuestions[room.currentQuestionIndex];
     room.questionsPlayed++;
     room.currentQuestionIndex++;
+    room.currentQuestion = q;
+    room.roundActive = true;
 
     io.to(room.id).emit('new_question', {
       question: q,
@@ -618,10 +667,26 @@ io.on('connection', (socket) => {
     io.to(room.id).emit('update_players', getPlayersList(room));
     io.to(room.hostSocketId).emit('pending_players_update', getPendingList(room));
     broadcastRoomList();
+
+    // אם שחקן עזב באמצע שאלה - ייתכן שכל הנותרים כבר הצביעו והסיבוב צריך להסתיים
+    checkRoundCompletion(room);
   });
 });
 
+function checkRoundCompletion(room) {
+  if (!room || !room.roundActive) return;
+  const total = room.players.size;
+  if (total === 0) return;
+  const votedCount = Array.from(room.players.values()).filter(p => p.currentVote !== null).length;
+  if (votedCount >= total) {
+    calculateResults(room);
+  }
+}
+
 function calculateResults(room) {
+  room.roundActive = false;
+  room.currentQuestion = null;
+
   const votes = {};
 
   room.players.forEach(p => { votes[p.name] = 0; });
