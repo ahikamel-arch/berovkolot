@@ -3,138 +3,186 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ברוב קולות</title>
+  <title>ברוב קולות - מסך מרכזי</title>
   <script src="/socket.io/socket.io.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-    body { background-color: #f0f2f5; color: #333; padding-bottom: 20px; }
-
-    .brand-header { text-align: center; padding: 20px 10px 10px 10px; }
-    .brand-title { font-size: 2.2em; font-weight: 900; color: #2c3e50; letter-spacing: -1px; margin-bottom: 4px; }
-    .brand-subtitle { font-size: 0.95em; color: #7f8c8d; font-weight: 600; }
-
-    .top-bar {
-      position: sticky;
-      top: 0;
-      background: #2c3e50;
-      color: white;
-      padding: 12px 16px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-      z-index: 1000;
+    html, body {
+      height: 100%;
+      background: linear-gradient(135deg, #1e2a3a 0%, #2c3e50 100%);
+      color: #fff;
+      overflow-x: hidden;
     }
-    .user-badge { background: #27ae60; padding: 4px 10px; border-radius: 12px; font-weight: bold; font-size: 0.9em; }
-    .host-badge { background: #f39c12; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.8em; font-weight: bold; margin-left: 5px; }
+    body { display: flex; flex-direction: column; align-items: center; padding: 24px 16px; min-height: 100vh; }
 
-    .container { max-width: 600px; margin: 0 auto; padding: 15px; }
+    .brand { text-align: center; margin-bottom: 18px; }
+    .brand-title { font-size: 2.4em; font-weight: 900; letter-spacing: -1px; }
+    .brand-subtitle { font-size: 1em; color: #95a5a6; font-weight: 600; margin-top: 4px; }
+
+    .stage {
+      width: 100%;
+      max-width: 900px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
 
     .card {
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 15px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 40px;
+      width: 100%;
+      text-align: center;
+      backdrop-filter: blur(4px);
     }
-
-    h1, h2, h3 { text-align: center; color: #2c3e50; margin-bottom: 15px; }
 
     input[type="text"] {
       width: 100%;
-      padding: 12px;
-      border: 2px solid #ddd;
-      border-radius: 8px;
-      font-size: 16px;
-      margin-bottom: 12px;
+      max-width: 320px;
+      padding: 14px;
+      border: none;
+      border-radius: 10px;
+      font-size: 18px;
+      margin: 10px auto;
+      display: block;
+      text-align: center;
     }
-
     button {
-      width: 100%;
       background: #3498db;
       color: white;
       border: none;
-      padding: 12px;
-      border-radius: 8px;
-      font-size: 16px;
+      padding: 14px 24px;
+      border-radius: 10px;
+      font-size: 17px;
       font-weight: bold;
       cursor: pointer;
-      margin-top: 5px;
+      margin-top: 10px;
     }
-    button.green { background: #27ae60; }
-    button.red { background: #e74c3c; }
+    button:hover { background: #2980b9; }
+    button.secondary { background: rgba(255,255,255,0.12); }
+    button.secondary:hover { background: rgba(255,255,255,0.22); }
 
     .room-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: #ecf0f1;
-      border: 2px solid #bdc3c7;
-      padding: 12px 15px;
-      margin-bottom: 8px;
-      border-radius: 8px;
+      background: rgba(255,255,255,0.08);
+      padding: 16px 22px;
+      margin: 8px 0;
+      border-radius: 12px;
       cursor: pointer;
+      font-size: 1.3em;
       font-weight: bold;
-      color: #2c3e50;
     }
-    .room-item:hover { background: #d6dbdf; }
+    .room-item:hover { background: rgba(255,255,255,0.18); }
+    .rooms-list { max-width: 500px; margin: 0 auto; text-align: right; }
 
-    .player-btn {
-      background: #ecf0f1;
-      color: #2c3e50;
-      border: 2px solid #bdc3c7;
-      margin-bottom: 8px;
-      text-align: right;
-      padding: 14px;
+    .join-hint { margin-top: 26px; font-size: 1.05em; color: #bdc3c7; line-height: 1.7; }
+    .join-hint b { color: #f1c40f; }
+
+    .room-tag {
+      position: fixed;
+      top: 16px;
+      right: 20px;
+      background: rgba(0,0,0,0.35);
+      padding: 8px 16px;
+      border-radius: 30px;
+      font-weight: bold;
+      font-size: 1.1em;
+      z-index: 500;
     }
-    .player-btn.selected { background: #e74c3c; color: white; border-color: #c0392b; }
-    .player-btn:disabled { cursor: default; opacity: 0.7; }
-    .player-btn.selected:disabled { opacity: 1; }
-
-    .pending-box { background: #fef5e7; border: 1px solid #f5cba7; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
-    .pending-row { display: flex; justify-content: space-between; align-items: center; margin: 6px 0; }
-    .pending-row button { width: auto; padding: 6px 14px; margin: 0 3px; font-size: 14px; }
-
-    .votes-list { list-style: none; margin: 15px 0; padding: 0; }
-    .votes-list li { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; font-size: 1.1em; }
-
-    .scoreboard-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    .scoreboard-table th, .scoreboard-table td { padding: 10px; text-align: center; border-bottom: 1px solid #eee; }
-    .scoreboard-table th { background: #f8f9fa; color: #7f8c8d; font-size: 0.85em; }
-    .scoreboard-table tr.me { background: #e8f8f5; font-weight: bold; }
-
-    .question-text { font-size: 1.25em; font-weight: bold; text-align: center; margin: 15px 0; color: #2c3e50; }
-    .waiting-msg { text-align: center; color: #e67e22; font-weight: bold; margin-top: 15px; padding: 10px; background: #fef5e7; border-radius: 8px; }
-    .error-msg { text-align: center; color: #e74c3c; font-weight: bold; margin-top: 10px; }
-    .hidden { display: none !important; }
-
-    /* מסך כללים */
-    .help-btn {
+    .change-room-btn {
+      position: fixed;
+      top: 16px;
+      left: 20px;
       width: auto;
-      background: transparent;
-      border: 2px solid rgba(255,255,255,0.6);
-      color: white;
-      border-radius: 50%;
-      font-size: 16px;
-      font-weight: bold;
-      padding: 2px 10px;
-      margin: 0 0 0 8px;
-      cursor: pointer;
+      background: rgba(255,255,255,0.12);
+      font-size: 0.85em;
+      padding: 8px 16px;
+      margin: 0;
+      z-index: 500;
     }
+
+    .progress-num { font-size: 1.2em; color: #f1c40f; font-weight: bold; margin-bottom: 10px; }
+    .question-text { font-size: clamp(1.8em, 4vw, 2.6em); font-weight: 800; line-height: 1.35; margin: 20px 0 30px 0; }
+
+    .vote-progress-track {
+      width: 100%;
+      max-width: 500px;
+      height: 14px;
+      background: rgba(255,255,255,0.15);
+      border-radius: 8px;
+      margin: 0 auto 12px auto;
+      overflow: hidden;
+    }
+    .vote-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #27ae60, #2ecc71);
+      border-radius: 8px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+    .vote-progress-label { color: #bdc3c7; font-size: 1.1em; }
+
+    .players-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 24px; }
+    .player-chip {
+      background: rgba(255,255,255,0.08);
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 14px;
+      padding: 12px 18px;
+      font-size: 1.15em;
+      font-weight: bold;
+      min-width: 100px;
+    }
+    .player-chip.voted { border-color: #2ecc71; background: rgba(46,204,113,0.18); }
+    .player-chip .status { display: block; font-size: 0.8em; color: #95a5a6; margin-top: 4px; }
+    .player-chip.disconnected { opacity: 0.4; }
+
+    .winner-banner { font-size: clamp(1.6em, 4vw, 2.3em); font-weight: 900; margin-bottom: 18px; }
+    .votes-breakdown { max-width: 480px; margin: 0 auto; text-align: right; }
+    .votes-breakdown li {
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 16px;
+      margin: 6px 0;
+      background: rgba(255,255,255,0.06);
+      border-radius: 10px;
+      font-size: 1.15em;
+    }
+    .votes-breakdown li b { color: #f1c40f; }
+
+    .scoreboard { width: 100%; max-width: 560px; margin: 30px auto 0 auto; }
+    .scoreboard h3 { font-size: 1em; color: #95a5a6; margin-bottom: 12px; text-align: center; }
+    table.score-table { width: 100%; border-collapse: collapse; }
+    table.score-table td { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 1.15em; }
+    table.score-table td:first-child { text-align: right; width: 55%; }
+    table.score-table td:last-child { text-align: left; font-weight: 900; color: #f1c40f; }
+    table.score-table tr:first-child td { font-size: 1.35em; }
+
+    .champion-box { text-align: center; }
+    .champion-emoji { font-size: 4.5em; margin-bottom: 8px; }
+    .champion-name { font-size: clamp(2em, 5vw, 3em); font-weight: 900; color: #f1c40f; margin: 10px 0; }
+
+    .waiting-note { color: #f39c12; font-weight: bold; margin-top: 20px; font-size: 1.05em; }
+
     .help-fab {
       position: fixed;
-      top: 12px;
-      left: 12px;
-      width: 42px;
-      height: 42px;
+      bottom: 20px;
+      left: 20px;
+      width: 46px;
+      height: 46px;
       border-radius: 50%;
       background: #8e44ad;
       color: white;
-      font-size: 20px;
+      font-size: 22px;
       font-weight: bold;
       border: none;
       cursor: pointer;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.35);
       z-index: 2000;
       padding: 0;
       margin: 0;
@@ -142,7 +190,7 @@
     .modal-overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0,0,0,0.55);
+      background: rgba(0,0,0,0.6);
       display: flex;
       justify-content: center;
       align-items: center;
@@ -150,26 +198,26 @@
       padding: 20px;
     }
     .modal-box {
-      background: white;
-      border-radius: 14px;
-      padding: 22px;
-      max-width: 480px;
+      background: #2c3e50;
+      border-radius: 16px;
+      padding: 25px;
+      max-width: 500px;
       width: 100%;
       max-height: 85vh;
       overflow-y: auto;
       text-align: right;
+      color: #fff;
     }
-    .modal-box h2 { text-align: center; margin-bottom: 10px; }
-    .modal-box h4 { margin: 16px 0 6px 0; color: #8e44ad; text-align: right; }
-    .modal-box p { color: #444; line-height: 1.6; margin: 4px 0; }
-    .score-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-    .score-table td { padding: 8px 10px; border-bottom: 1px solid #eee; }
-    .score-table td:last-child { text-align: left; font-weight: bold; white-space: nowrap; }
-    .score-plus { color: #27ae60; }
+    .modal-box h2 { text-align: center; }
+    .modal-box h4 { margin: 16px 0 6px 0; color: #f1c40f; }
+    .modal-box p { color: #dcdde1; line-height: 1.6; margin: 4px 0; }
+    .score-mini-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    .score-mini-table td { padding: 8px 10px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .score-mini-table td:last-child { text-align: left; font-weight: bold; white-space: nowrap; }
+    .score-plus { color: #2ecc71; }
     .score-minus { color: #e74c3c; }
-    .score-zero { color: #7f8c8d; }
+    .score-zero { color: #95a5a6; }
 
-    /* הודעת שגיאה צפה */
     #toast {
       position: fixed;
       bottom: 20px;
@@ -185,288 +233,124 @@
       max-width: 90%;
       text-align: center;
     }
-    .version-tag {
-      position: fixed;
-      bottom: 6px;
-      left: 10px;
-      font-size: 11px;
-      color: #999;
-      z-index: 500;
-    }
+    .version-tag { position: fixed; bottom: 6px; right: 10px; font-size: 11px; color: #7f8c8d; z-index: 500; }
+
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
 
-  <!-- כפתור כללים צף -->
   <button class="help-fab" onclick="toggleRules(true)" title="כללי המשחק">?</button>
-  <div class="version-tag">גרסה 1.5</div>
+  <div class="version-tag">גרסה 1.7 · מסך מרכזי</div>
+  <div id="roomTag" class="room-tag hidden"></div>
+  <button id="changeRoomBtn" class="change-room-btn hidden" onclick="changeRoom()">🔁 החלף חדר</button>
 
   <!-- חלונית כללים -->
   <div id="rulesModal" class="modal-overlay hidden" onclick="if(event.target===this) toggleRules(false)">
     <div class="modal-box">
       <h2>📜 איך משחקים?</h2>
-
       <h4>🎮 מהלך המשחק</h4>
-      <p>בכל סיבוב מוצגת שאלה ("מי הכי סביר ש..."), וכל שחקן מצביע בסתר על מי מהחבורה הכי מתאים לתשובה. כשכולם הצביעו - התוצאות נחשפות! המנהל (👑) מעביר לשאלה הבאה.</p>
-
+      <p>בכל סיבוב מוצגת שאלה, וכל שחקן מצביע בסתר מהטלפון שלו על מי מהחבורה הכי מתאים לתשובה. כשכולם הצביעו - התוצאות נחשפות כאן, על המסך המרכזי!</p>
       <h4>🎯 המטרה</h4>
       <p>לנחש איך <b>הרוב</b> יצביע. לא מה אתם חושבים - מה <b>כולם</b> חושבים!</p>
-
       <h4>💰 שיטת הניקוד</h4>
-      <table class="score-table">
-        <tr>
-          <td>הצבעת כמו הרוב</td>
-          <td class="score-plus">+1</td>
-        </tr>
-        <tr>
-          <td>הצבעת על עצמך - והרוב באמת בחר בך 😎</td>
-          <td class="score-plus">+2</td>
-        </tr>
-        <tr>
-          <td>הצבעת על עצמך - אבל הרוב בחר מישהו אחר 😅</td>
-          <td class="score-minus">-1</td>
-        </tr>
-        <tr>
-          <td>תיקו (אין רוב ברור)</td>
-          <td class="score-zero">0 לכולם</td>
-        </tr>
+      <table class="score-mini-table">
+        <tr><td>הצבעת כמו הרוב</td><td class="score-plus">+1</td></tr>
+        <tr><td>הצבעת על עצמך - והרוב בחר בך 😎</td><td class="score-plus">+2</td></tr>
+        <tr><td>הצבעת על עצמך - אבל לא נבחרת 😅</td><td class="score-minus">-1</td></tr>
+        <tr><td>תיקו (אין רוב ברור)</td><td class="score-zero">0 לכולם</td></tr>
       </table>
-      <p style="font-size: 14px; color: #7f8c8d;">* בתיקו, מי שהצביע לעצמו ולא היה בין המובילים מאבד נקודה. הניקוד אף פעם לא יורד מתחת ל-0.</p>
-
       <h4>🏆 ניצחון</h4>
       <p>הראשון שמגיע ל-<b>15 נקודות</b> מנצח! אם אף אחד לא הגיע - המוביל אחרי <b>25 שאלות</b> לוקח את התואר.</p>
-
-      <button onclick="toggleRules(false)" style="margin-top: 15px;">הבנתי, בואו נשחק! 🚀</button>
+      <button onclick="toggleRules(false)" style="margin-top: 15px; width: 100%;">סגור</button>
     </div>
   </div>
 
-  <div id="topBar" class="top-bar hidden">
-    <span>🗳️ ברוב קולות <span id="roomBadge" style="font-size:0.85em; opacity:0.8;"></span></span>
-    <div>
-      <span id="hostIndicator" class="host-badge hidden">👑 מנהל</span>
-      <span class="user-badge" id="myBadge">את/ה: -</span>
-    </div>
+  <div class="brand">
+    <div class="brand-title">🗳️ ברוב קולות</div>
+    <div class="brand-subtitle">מסך מרכזי לצפייה</div>
   </div>
 
-  <div class="container">
+  <div class="stage">
 
-    <div class="brand-header">
-      <div class="brand-title">🗳️ ברוב קולות</div>
-      <div class="brand-subtitle">מי הכי סביר ש...? מנחשים ומגלים!</div>
-    </div>
-
-    <!-- מסך התחברות -->
-    <div id="loginCard" class="card">
-      <h2>הצטרפות למשחק</h2>
-      <input type="text" id="nameInput" placeholder="הכנס את שמך..." maxlength="15">
-
-      <h3 style="margin-top:15px; font-size:1em; color:#7f8c8d;">חדרים פעילים:</h3>
-      <div id="roomsContainer">
-        <p style="text-align:center; color:#7f8c8d;">מחפש חדרים...</p>
+    <!-- בחירת חדר לצפייה -->
+    <div id="pickCard" class="card">
+      <h2 style="margin-bottom: 16px;">איזה חדר להציג?</h2>
+      <div id="roomsContainer" class="rooms-list">
+        <p style="text-align:center; color:#bdc3c7;">מחפש חדרים פעילים...</p>
       </div>
-      <button onclick="requestRooms()" style="background:#95a5a6; font-size:14px; padding:8px;">🔄 רענן רשימה</button>
-
-      <hr style="margin:18px 0; border:0; border-top:1px solid #eee;">
-
-      <input type="text" id="newRoomInput" placeholder="או צור חדר חדש - שם החדר..." maxlength="20">
-      <button class="green" onclick="createRoom()">צור חדר כמנהל</button>
-
-      <p id="loginError" class="error-msg"></p>
+      <button class="secondary" onclick="requestRooms()" style="margin-top: 16px;">🔄 רענן רשימה</button>
+      <input type="text" id="manualRoomInput" placeholder="או הקלד שם חדר...">
+      <button onclick="watchManual()">התחל להציג</button>
+      <p id="pickError" style="color:#e74c3c; font-weight:bold; margin-top:10px;"></p>
     </div>
 
-    <!-- המתנה לאישור מנהל -->
-    <div id="approvalCard" class="card hidden">
-      <h2>⏳ ממתין לאישור המנהל...</h2>
-      <p style="text-align:center; color:#7f8c8d;">בקשת ההצטרפות שלך נשלחה למנהל החדר.</p>
-    </div>
-
-    <!-- חדר המתנה -->
+    <!-- לובי: ממתינים להתחלה -->
     <div id="lobbyCard" class="card hidden">
-      <h2>חדר המתנה</h2>
-      <p style="text-align:center; color:#7f8c8d; margin-bottom:15px;">כשתהיו מוכנים, המנהל יתחיל את המשחק...</p>
-      <div class="host-only hidden">
-        <button class="green" onclick="nextQuestion()">התחל משחק (מנהל)</button>
+      <h2>⏳ ממתינים להתחלת המשחק</h2>
+      <div class="join-hint">
+        כדי להצטרף, היכנסו מהטלפון לאתר המשחק ובחרו את חדר<br>
+        <b id="lobbyRoomName"></b>
       </div>
-      <div class="guest-only waiting-msg">
-        ⏳ ממתינים למנהל המשחק שיתחיל...
-      </div>
-    </div>
-
-    <!-- פאנל אישור מצטרפים (מנהל) -->
-    <div id="pendingCard" class="card pending-box hidden">
-      <h3 style="margin-bottom:8px; font-size:1em;">🔔 בקשות הצטרפות:</h3>
-      <div id="pendingList"></div>
+      <div id="lobbyPlayers" class="players-grid"></div>
     </div>
 
     <!-- מסך שאלה -->
-    <div id="gameCard" class="card hidden">
-      <div style="text-align: center; color: #7f8c8d; font-size: 0.9em;" id="questionNum">שאלה</div>
-      <div class="question-text" id="questionText">טוען שאלה...</div>
-      <div id="optionsContainer"></div>
-      <div id="voteStatus" style="text-align:center; margin-top:10px; color:#e67e22; font-weight:bold;"></div>
-      <div class="host-only hidden">
-        <button onclick="skipQuestion()" style="background:#f39c12; font-size:14px; padding:8px;">⏭️ דלג על השאלה (מנהל)</button>
-      </div>
+    <div id="questionCard" class="card hidden">
+      <div class="progress-num" id="progressNum"></div>
+      <div class="question-text" id="questionText"></div>
+      <div class="vote-progress-track"><div class="vote-progress-fill" id="voteFill"></div></div>
+      <div class="vote-progress-label" id="voteLabel"></div>
+      <div id="questionPlayers" class="players-grid"></div>
     </div>
 
     <!-- מסך תוצאות סיבוב -->
     <div id="resultsCard" class="card hidden">
-      <h2>תוצאות ההצבעה</h2>
-      <p style="text-align:center; font-size:1.1em;" id="winnerText"></p>
-      <ul class="votes-list" id="votesBreakdown"></ul>
-
-      <div class="host-only hidden">
-        <button id="nextBtnHost" onclick="nextQuestion()">לשאלה הבאה ➔ (מנהל)</button>
-        <button id="revealBtnHost" class="hidden" onclick="revealWinner()" style="background:#f39c12;">🏆 לחשיפת המנצח! (מנהל)</button>
-      </div>
-      <div class="guest-only waiting-msg" id="resultsWaitMsg">
-        ⏳ ממתינים למנהל שיעבור לשאלה הבאה...
+      <div class="winner-banner" id="winnerBanner"></div>
+      <ul class="votes-breakdown" id="votesBreakdown"></ul>
+      <p id="finalNote" class="waiting-note hidden">🏁 זו הייתה השאלה האחרונה - ממתינים למנהל שיחשוף את המנצח...</p>
+      <div class="scoreboard">
+        <h3>🏆 טבלת מובילים</h3>
+        <table class="score-table"><tbody id="resultsScoreboard"></tbody></table>
       </div>
     </div>
 
-    <!-- מסך סיום המשחק -->
-    <div id="gameOverCard" class="card hidden" style="text-align: center;">
-      <h1 style="font-size:2.5em; margin-bottom:10px;">🏆</h1>
-      <h2>המשחק הסתיים!</h2>
-      <p style="font-size:1.3em; margin:15px 0; color:#27ae60;" id="finalWinnerHost"></p>
-
-      <div class="host-only hidden">
-        <button class="green" onclick="restartGame()">התחל משחק חדש 🔄 (מנהל)</button>
+    <!-- מסך ניצחון -->
+    <div id="championCard" class="card hidden champion-box">
+      <div class="champion-emoji">🏆</div>
+      <div>המשחק הסתיים!</div>
+      <div class="champion-name" id="championName"></div>
+      <div id="championScore" style="color:#bdc3c7; font-size:1.1em;"></div>
+      <div class="scoreboard">
+        <h3>טבלת התוצאות הסופית</h3>
+        <table class="score-table"><tbody id="championScoreboard"></tbody></table>
       </div>
-      <div class="guest-only waiting-msg">
-        ⏳ ממתינים למנהל שיתחיל משחק חדש...
-      </div>
-    </div>
-
-    <!-- טבלת מובילים -->
-    <div id="scoreboardCard" class="card hidden">
-      <h3 style="margin-bottom:10px; font-size:1em; color:#7f8c8d;">🏆 טבלת מובילים בזמן אמת</h3>
-      <table class="scoreboard-table">
-        <thead>
-          <tr>
-            <th>מיקום</th>
-            <th>שם</th>
-            <th>ניקוד מצטבר</th>
-          </tr>
-        </thead>
-        <tbody id="scoreboardBody"></tbody>
-      </table>
     </div>
 
   </div>
 
   <script>
     const socket = io();
-    let myName = '';
-    let currentRoom = '';
-    let isHost = false;
-    let hasVotedThisRound = false;
-    let roundActive = false;
-
-    function saveSession() {
-      sessionStorage.setItem('bv_room', currentRoom);
-      sessionStorage.setItem('bv_name', myName);
-    }
-    function clearSession() {
-      sessionStorage.removeItem('bv_room');
-      sessionStorage.removeItem('bv_name');
-    }
+    let watchingRoom = '';
 
     socket.on('connect', () => {
       requestRooms();
-      // חיבור מחדש אוטומטי אחרי רענון / נפילת רשת / מסך שננעל
-      const savedRoom = currentRoom || sessionStorage.getItem('bv_room');
-      const savedName = myName || sessionStorage.getItem('bv_name');
-      if (savedRoom && savedName) {
-        socket.emit('rejoin_room', { roomId: savedRoom, playerName: savedName });
-      }
-    });
-
-    socket.on('rejoin_success', (data) => {
-      currentRoom = data.roomId;
-      isHost = data.isHost;
-      myName = myName || sessionStorage.getItem('bv_name') || '';
-      saveSession();
-
-      document.getElementById('approvalCard').classList.add('hidden');
-      enterGame();
-
-      if (data.roundActive && data.question) {
-        // משחזרים את מסך השאלה בדיוק כפי שהיה
-        roundActive = true;
-        hasVotedThisRound = data.myVote !== null;
-
-        document.getElementById('lobbyCard').classList.add('hidden');
-        document.getElementById('resultsCard').classList.add('hidden');
-        document.getElementById('gameOverCard').classList.add('hidden');
-        document.getElementById('gameCard').classList.remove('hidden');
-
-        document.getElementById('questionNum').innerText = 'שאלה ' + data.qIndex + ' מתוך ' + data.total;
-        document.getElementById('questionText').innerText = data.question.text;
-        document.getElementById('voteStatus').innerText = hasVotedThisRound ? 'הצבעתך נקלטה! ממתינים לשאר...' : '';
-
-        const container = document.getElementById('optionsContainer');
-        container.innerHTML = '';
-        data.players.forEach(p => {
-          const btn = document.createElement('button');
-          btn.className = 'player-btn';
-          btn.innerText = p.name + (p.name === myName ? ' (את/ה)' : '');
-          if (hasVotedThisRound) {
-            btn.disabled = true;
-            if (p.name === data.myVote) btn.classList.add('selected');
-          } else {
-            btn.onclick = () => submitVote(p.name, btn);
-          }
-          container.appendChild(btn);
-        });
-      } else {
-        roundActive = false;
-        hasVotedThisRound = false;
-        if (data.gameOver) {
-          document.getElementById('lobbyCard').classList.add('hidden');
-          document.getElementById('gameOverCard').classList.remove('hidden');
-          document.getElementById('finalWinnerHost').innerText = 'המשחק הסתיים! אפשר להתחיל משחק חדש 🎉';
-        }
-      }
-
-      renderScoreboard(data.players);
-    });
-
-    socket.on('rejoin_failed', () => {
-      clearSession();
+      // כניסה ישירה עם ?room=... (כפתור "פתח מסך תצוגה" מהעמוד הראשי) - מדלגים על מסך הבחירה
+      const urlRoom = new URLSearchParams(location.search).get('room');
+      const saved = urlRoom || watchingRoom || sessionStorage.getItem('bv_watch_room');
+      if (saved) startWatching(saved);
     });
 
     function requestRooms() {
       socket.emit('get_rooms');
     }
 
-    function toggleRules(show) {
-      document.getElementById('rulesModal').classList.toggle('hidden', !show);
-    }
-
-    // הודעת שגיאה צפה - כדי שדחיות מהשרת לא יהיו שקטות
-    let toastTimer = null;
-    function showToast(msg) {
-      let el = document.getElementById('toast');
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'toast';
-        document.body.appendChild(el);
-      }
-      el.innerText = msg;
-      el.style.display = 'block';
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => { el.style.display = 'none'; }, 4000);
-    }
-
-    socket.on('host_action_error', (msg) => showToast('⚠️ ' + msg));
-
     socket.on('rooms_list_update', (roomsList) => {
       const container = document.getElementById('roomsContainer');
       container.innerHTML = '';
       if (!roomsList || roomsList.length === 0) {
         const p = document.createElement('p');
-        p.style.cssText = 'text-align:center; color:#7f8c8d;';
+        p.style.cssText = 'text-align:center; color:#bdc3c7;';
         p.innerText = 'אין חדרים פעילים כרגע';
         container.appendChild(p);
         return;
@@ -477,276 +361,197 @@
         const nameSpan = document.createElement('span');
         nameSpan.innerText = '🏠 ' + r.id;
         const countSpan = document.createElement('span');
-        countSpan.style.cssText = 'font-size:0.85em; color:#7f8c8d;';
+        countSpan.style.cssText = 'font-size:0.75em; color:#bdc3c7;';
         countSpan.innerText = '👥 ' + r.count;
         item.appendChild(nameSpan);
         item.appendChild(countSpan);
-        item.onclick = () => joinRoom(r.id);
+        item.onclick = () => startWatching(r.id);
         container.appendChild(item);
       });
     });
 
-    function getName() {
-      const name = document.getElementById('nameInput').value.trim();
-      if (!name) {
-        document.getElementById('loginError').innerText = 'נא להזין שם קודם';
-        return null;
-      }
-      document.getElementById('loginError').innerText = '';
-      return name;
+    function watchManual() {
+      const val = document.getElementById('manualRoomInput').value.trim();
+      if (!val) return;
+      startWatching(val);
     }
 
-    function createRoom() {
-      const name = getName();
-      if (!name) return;
-      const roomId = document.getElementById('newRoomInput').value.trim();
-      if (!roomId) {
-        document.getElementById('loginError').innerText = 'נא להזין שם לחדר החדש';
-        return;
-      }
-      myName = name;
-      socket.emit('create_room', { roomId: roomId, hostName: myName });
+    function startWatching(roomId) {
+      watchingRoom = roomId;
+      sessionStorage.setItem('bv_watch_room', roomId);
+      socket.emit('watch_room', { roomId });
     }
 
-    function joinRoom(roomId) {
-      const name = getName();
-      if (!name) return;
-      myName = name;
-      socket.emit('join_room_request', { roomId: roomId, playerName: myName });
+    function changeRoom() {
+      watchingRoom = '';
+      sessionStorage.removeItem('bv_watch_room');
+      hideAllCards();
+      document.getElementById('pickCard').classList.remove('hidden');
+      document.getElementById('roomTag').classList.add('hidden');
+      document.getElementById('changeRoomBtn').classList.add('hidden');
+      requestRooms();
     }
 
-    socket.on('room_error', (msg) => {
-      document.getElementById('loginError').innerText = msg;
+    socket.on('watch_error', (msg) => {
+      document.getElementById('pickError').innerText = msg;
+      sessionStorage.removeItem('bv_watch_room');
     });
 
-    socket.on('waiting_for_approval', () => {
-      document.getElementById('loginCard').classList.add('hidden');
-      document.getElementById('approvalCard').classList.remove('hidden');
-    });
-
-    socket.on('join_rejected', (msg) => {
-      clearSession();
-      alert(msg);
-      location.reload();
-    });
-
-    socket.on('room_created', (data) => {
-      currentRoom = data.roomId;
-      isHost = true;
-      saveSession();
-      enterGame();
-    });
-
-    socket.on('join_approved', (data) => {
-      currentRoom = data.roomId;
-      isHost = false;
-      saveSession();
-      document.getElementById('approvalCard').classList.add('hidden');
-      enterGame();
-    });
-
-    function enterGame() {
-      document.getElementById('loginCard').classList.add('hidden');
-      document.getElementById('myBadge').innerText = 'את/ה: ' + myName;
-      document.getElementById('roomBadge').innerText = '| חדר: ' + currentRoom;
-      document.getElementById('topBar').classList.remove('hidden');
-      document.getElementById('lobbyCard').classList.remove('hidden');
-      document.getElementById('scoreboardCard').classList.remove('hidden');
-      updateHostUI();
+    function hideAllCards() {
+      ['pickCard','lobbyCard','questionCard','resultsCard','championCard'].forEach(id =>
+        document.getElementById(id).classList.add('hidden'));
     }
 
-    // מינוי כמנהל חדש אם המנהל המקורי עזב
-    socket.on('host_status', (status) => {
-      isHost = status;
-      updateHostUI();
-    });
+    function enterWatchMode(roomId) {
+      document.getElementById('roomTag').innerText = '🏠 ' + roomId;
+      document.getElementById('roomTag').classList.remove('hidden');
+      document.getElementById('changeRoomBtn').classList.remove('hidden');
+      document.getElementById('pickError').innerText = '';
+    }
 
-    function updateHostUI() {
-      const hostElements = document.querySelectorAll('.host-only');
-      const guestElements = document.querySelectorAll('.guest-only');
-      const hostIndicator = document.getElementById('hostIndicator');
+    // תמונת מצב מלאה כשמתחילים לצפות (או מתחברים מחדש אחרי ניתוק)
+    socket.on('watch_sync', (data) => {
+      enterWatchMode(data.roomId);
 
-      if (isHost) {
-        hostElements.forEach(el => el.classList.remove('hidden'));
-        guestElements.forEach(el => el.classList.add('hidden'));
-        hostIndicator.classList.remove('hidden');
+      if (data.gameOver && data.winnerRevealed) {
+        renderChampion(data.finalWinner, data.players);
+      } else if (data.roundActive && data.question) {
+        renderQuestion(data);
+      } else if (data.lastResults) {
+        renderResults(data.lastResults, data.gameOver && !data.winnerRevealed);
       } else {
-        hostElements.forEach(el => el.classList.add('hidden'));
-        guestElements.forEach(el => el.classList.remove('hidden'));
-        hostIndicator.classList.add('hidden');
-        document.getElementById('pendingCard').classList.add('hidden');
+        renderLobby(data.roomId, data.players);
       }
-    }
-
-    // פאנל אישור מצטרפים למנהל
-    socket.on('pending_players_update', (pendingList) => {
-      if (!isHost) return;
-      const card = document.getElementById('pendingCard');
-      const list = document.getElementById('pendingList');
-      list.innerHTML = '';
-
-      if (!pendingList || pendingList.length === 0) {
-        card.classList.add('hidden');
-        return;
-      }
-      card.classList.remove('hidden');
-      pendingList.forEach(p => {
-        const row = document.createElement('div');
-        row.className = 'pending-row';
-        const nameSpan = document.createElement('span');
-        nameSpan.style.fontWeight = 'bold';
-        nameSpan.innerText = p.name;
-        const btns = document.createElement('div');
-        const ok = document.createElement('button');
-        ok.className = 'green';
-        ok.innerText = 'אשר';
-        ok.onclick = () => socket.emit('approve_player', p.id);
-        const no = document.createElement('button');
-        no.className = 'red';
-        no.innerText = 'דחה';
-        no.onclick = () => socket.emit('reject_player', p.id);
-        btns.appendChild(ok);
-        btns.appendChild(no);
-        row.appendChild(nameSpan);
-        row.appendChild(btns);
-        list.appendChild(row);
-      });
     });
-
-    function nextQuestion() { socket.emit('next_question', { roomId: currentRoom }); }
-    function restartGame() { socket.emit('restart_game', { roomId: currentRoom }); }
-    function skipQuestion() { socket.emit('skip_question', { roomId: currentRoom }); }
-    function revealWinner() { socket.emit('reveal_winner', { roomId: currentRoom }); }
 
     socket.on('update_players', (players) => {
-      renderScoreboard(players);
+      // מעדכן את רשימת השחקנים בכל מסך שבו היא רלוונטית, בלי לשנות את שלב התצוגה
+      renderLobbyPlayers(players);
+      renderQuestionPlayers(players);
     });
 
     socket.on('new_question', (data) => {
-      hasVotedThisRound = false;
-      roundActive = true;
-
-      document.getElementById('lobbyCard').classList.add('hidden');
-      document.getElementById('resultsCard').classList.add('hidden');
-      document.getElementById('gameOverCard').classList.add('hidden');
-      document.getElementById('gameCard').classList.remove('hidden');
-
-      document.getElementById('questionNum').innerText = 'שאלה ' + data.qIndex + ' מתוך ' + data.total;
-      document.getElementById('questionText').innerText = data.question.text;
-      document.getElementById('voteStatus').innerText = data.skipped ? 'המנהל דילג על השאלה הקודמת 🙃' : '';
-
-      const container = document.getElementById('optionsContainer');
-      container.innerHTML = '';
-
-      data.players.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'player-btn';
-        btn.innerText = p.name + (p.name === myName ? ' (את/ה)' : '');
-        btn.onclick = () => submitVote(p.name, btn);
-        container.appendChild(btn);
-      });
-
-      renderScoreboard(data.players);
+      renderQuestion(data);
     });
 
-    function submitVote(votedName, btnElement) {
-      if (hasVotedThisRound || !roundActive) return;
-      hasVotedThisRound = true;
-      socket.emit('submit_vote', votedName);
-
-      document.querySelectorAll('.player-btn').forEach(b => {
-        b.classList.remove('selected');
-        b.disabled = true;
-      });
-      btnElement.classList.add('selected');
-      document.getElementById('voteStatus').innerText = 'הצבעתך נקלטה! ממתינים לשאר...';
-    }
-
     socket.on('vote_progress', (data) => {
-      const el = document.getElementById('voteStatus');
-      const base = 'הצביעו ' + data.votedCount + ' מתוך ' + data.total + ' שחקנים';
-      el.innerText = hasVotedThisRound ? ('הצבעתך נקלטה! ' + base) : base;
+      const pct = data.total > 0 ? Math.round((data.votedCount / data.total) * 100) : 0;
+      document.getElementById('voteFill').style.width = pct + '%';
+      document.getElementById('voteLabel').innerText = 'הצביעו ' + data.votedCount + ' מתוך ' + data.total + ' שחקנים';
     });
 
     socket.on('show_results', (data) => {
-      roundActive = false;
-      document.getElementById('gameCard').classList.add('hidden');
-      document.getElementById('resultsCard').classList.remove('hidden');
-
-      // בשאלה האחרונה: במקום "לשאלה הבאה" מציגים כפתור חשיפת מנצח
-      document.getElementById('nextBtnHost').classList.toggle('hidden', !!data.isFinal);
-      document.getElementById('revealBtnHost').classList.toggle('hidden', !data.isFinal);
-      document.getElementById('resultsWaitMsg').innerText = data.isFinal
-        ? '🏁 זו הייתה השאלה האחרונה! ממתינים למנהל שיחשוף את המנצח...'
-        : '⏳ ממתינים למנהל שיעבור לשאלה הבאה...';
-
-      const winnerText = document.getElementById('winnerText');
-      winnerText.innerHTML = '';
-      if (data.isTie) {
-        const span = document.createElement('span');
-        span.style.cssText = 'color:#e74c3c; font-weight:bold;';
-        span.innerText = 'תיקו! אין רוב קולות ברור.';
-        winnerText.appendChild(span);
-      } else {
-        winnerText.appendChild(document.createTextNode('הרוב בחרו ב: '));
-        const strong = document.createElement('strong');
-        strong.style.cssText = 'color:#27ae60; font-size:1.3em;';
-        strong.innerText = data.winningVote;
-        winnerText.appendChild(strong);
-      }
-
-      const votesList = document.getElementById('votesBreakdown');
-      votesList.innerHTML = '';
-      data.playersList.forEach(p => {
-        const count = data.votesCount[p.name] || 0;
-        const li = document.createElement('li');
-        const nameSpan = document.createElement('span');
-        nameSpan.innerText = p.name;
-        const countSpan = document.createElement('span');
-        const strong = document.createElement('strong');
-        strong.innerText = count;
-        countSpan.appendChild(strong);
-        countSpan.appendChild(document.createTextNode(' קולות'));
-        li.appendChild(nameSpan);
-        li.appendChild(countSpan);
-        votesList.appendChild(li);
-      });
-
-      renderScoreboard(data.playersList);
+      renderResults(data, data.isFinal);
     });
 
     socket.on('game_over', (data) => {
-      roundActive = false;
-      document.getElementById('gameCard').classList.add('hidden');
-      document.getElementById('resultsCard').classList.add('hidden');
-      document.getElementById('gameOverCard').classList.remove('hidden');
-
-      document.getElementById('finalWinnerHost').innerText = 'המנצח הגדול: ' + data.winner.name + ' עם ' + data.winner.score + ' נקודות! 🎉';
-      renderScoreboard(data.playersList);
+      renderChampion(data.winner, data.playersList);
     });
 
-    function renderScoreboard(players) {
-      const tbody = document.getElementById('scoreboardBody');
+    function renderLobby(roomId, players) {
+      hideAllCards();
+      document.getElementById('lobbyCard').classList.remove('hidden');
+      document.getElementById('lobbyRoomName').innerText = roomId;
+      renderLobbyPlayers(players);
+    }
+
+    function renderLobbyPlayers(players) {
+      const box = document.getElementById('lobbyPlayers');
+      if (document.getElementById('lobbyCard').classList.contains('hidden')) return;
+      box.innerHTML = '';
+      (players || []).forEach(p => {
+        const chip = document.createElement('div');
+        chip.className = 'player-chip' + (p.connected === false ? ' disconnected' : '');
+        chip.innerText = (p.isHost ? '👑 ' : '') + p.name;
+        box.appendChild(chip);
+      });
+    }
+
+    function renderQuestion(data) {
+      hideAllCards();
+      document.getElementById('questionCard').classList.remove('hidden');
+      document.getElementById('progressNum').innerText = 'שאלה ' + data.qIndex + ' מתוך ' + data.total;
+      document.getElementById('questionText').innerText = data.question.text;
+      document.getElementById('voteFill').style.width = '0%';
+
+      const total = (data.players || []).filter(p => p.connected !== false).length;
+      const voted = (data.players || []).filter(p => p.hasVoted).length;
+      document.getElementById('voteLabel').innerText = total > 0 ? ('הצביעו ' + voted + ' מתוך ' + total + ' שחקנים') : '';
+
+      renderQuestionPlayers(data.players);
+    }
+
+    function renderQuestionPlayers(players) {
+      const box = document.getElementById('questionPlayers');
+      if (document.getElementById('questionCard').classList.contains('hidden')) return;
+      box.innerHTML = '';
+      (players || []).forEach(p => {
+        const chip = document.createElement('div');
+        chip.className = 'player-chip' + (p.hasVoted ? ' voted' : '') + (p.connected === false ? ' disconnected' : '');
+        const nameEl = document.createElement('span');
+        nameEl.innerText = (p.isHost ? '👑 ' : '') + p.name;
+        const statusEl = document.createElement('span');
+        statusEl.className = 'status';
+        statusEl.innerText = p.hasVoted ? '✅ הצביע/ה' : '⏳ חושב/ת...';
+        chip.appendChild(nameEl);
+        chip.appendChild(statusEl);
+        box.appendChild(chip);
+      });
+    }
+
+    function renderResults(data, isFinalPending) {
+      hideAllCards();
+      document.getElementById('resultsCard').classList.remove('hidden');
+
+      const banner = document.getElementById('winnerBanner');
+      if (data.isTie) {
+        banner.innerText = '🤝 תיקו! אין רוב ברור הפעם.';
+      } else {
+        banner.innerText = '🎉 הרוב קבע: ' + data.winningVote + '!';
+      }
+
+      const list = document.getElementById('votesBreakdown');
+      list.innerHTML = '';
+      Object.entries(data.votesCount).forEach(([name, count]) => {
+        const li = document.createElement('li');
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = name;
+        const countSpan = document.createElement('span');
+        countSpan.innerHTML = '<b>' + count + '</b> קולות';
+        li.appendChild(nameSpan);
+        li.appendChild(countSpan);
+        list.appendChild(li);
+      });
+
+      document.getElementById('finalNote').classList.toggle('hidden', !isFinalPending);
+      renderScoreboard(document.getElementById('resultsScoreboard'), data.playersList);
+    }
+
+    function renderChampion(winner, playersList) {
+      hideAllCards();
+      document.getElementById('championCard').classList.remove('hidden');
+      document.getElementById('championName').innerText = winner.name;
+      document.getElementById('championScore').innerText = winner.score + ' נקודות';
+      renderScoreboard(document.getElementById('championScoreboard'), playersList);
+    }
+
+    function renderScoreboard(tbody, players) {
       tbody.innerHTML = '';
-      players.forEach((p, index) => {
+      (players || []).forEach((p, index) => {
         const tr = document.createElement('tr');
-        if (p.name === myName) tr.className = 'me';
-        if (p.connected === false) tr.style.opacity = '0.45';
-
-        const tdPos = document.createElement('td');
-        tdPos.innerText = index + 1;
+        if (p.connected === false) tr.style.opacity = '0.4';
         const tdName = document.createElement('td');
-        tdName.innerText = (p.isHost ? '👑 ' : '') + p.name + (p.name === myName ? ' 👤' : '') + (p.connected === false ? ' 📵' : '');
+        tdName.innerText = (index + 1) + '. ' + (p.isHost ? '👑 ' : '') + p.name;
         const tdScore = document.createElement('td');
-        const strong = document.createElement('strong');
-        strong.innerText = p.score;
-        tdScore.appendChild(strong);
-
-        tr.appendChild(tdPos);
+        tdScore.innerText = p.score;
         tr.appendChild(tdName);
         tr.appendChild(tdScore);
         tbody.appendChild(tr);
       });
+    }
+
+    function toggleRules(show) {
+      document.getElementById('rulesModal').classList.toggle('hidden', !show);
     }
   </script>
 </body>
