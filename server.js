@@ -9,7 +9,7 @@ const io = new Server(server, {
   cors: { origin: "*" } 
 });
 
-const VERSION = '1.4';
+const VERSION = '1.5';
 
 app.use(express.static(path.join(__dirname, 'public'), {
   // מונע מדפדפנים (בעיקר בנייד) להגיש גרסה ישנה של הדפים מהמטמון
@@ -437,7 +437,8 @@ function createRoom(roomId, hostSocketId) {
     questionsPlayed: 0,
     currentQuestion: null,   // השאלה הפעילה כרגע
     roundActive: false,      // האם מקבלים הצבעות כרגע
-    gameOver: false          // האם המשחק הסתיים (עד restart)
+    gameOver: false,         // האם המשחק הסתיים (עד restart)
+    finalWinner: null        // המנצח שממתין לחשיפה במסך הסיום
   };
   rooms.set(roomId, room);
   broadcastRoomList();
@@ -501,6 +502,7 @@ function buildResumePayload(room, player) {
     total: MAX_QUESTIONS,
     myVote: player.currentVote,
     gameOver: room.gameOver,
+    winnerPending: !!(room.gameOver && room.finalWinner),
     players: getPlayersList(room)
   };
 }
@@ -834,6 +836,30 @@ io.on('connection', (socket) => {
     io.to(room.id).emit('update_players', getPlayersList(room));
   });
 
+  // חשיפת המנצח (מנהל בלבד) - אחרי שכולם ראו את תוצאות השאלה האחרונה
+  socket.on('reveal_winner', (data) => {
+    const reqRoomId = (data && data.roomId) ? data.roomId : socket.roomId;
+    const room = rooms.get(reqRoomId);
+
+    if (!room) {
+      socket.emit('host_action_error', 'החדר לא נמצא בשרת. נסה לרענן את הדף.');
+      return;
+    }
+    if (socket.id !== room.hostSocketId) {
+      socket.emit('host_action_error', 'השרת לא מזהה אותך כמנהל החדר. נסה לרענן את הדף.');
+      return;
+    }
+    if (!room.gameOver || !room.finalWinner) {
+      socket.emit('host_action_error', 'המשחק עדיין לא הסתיים.');
+      return;
+    }
+
+    io.to(room.id).emit('game_over', {
+      winner: room.finalWinner,
+      playersList: getPlayersList(room)
+    });
+  });
+
   socket.on('submit_vote', (vote) => {
     const room = rooms.get(socket.roomId);
     if (!room) return;
@@ -868,6 +894,7 @@ io.on('connection', (socket) => {
     socket.roomId = reqRoomId;
 
     room.gameOver = false;
+    room.finalWinner = null;
     room.players.forEach(p => {
       p.score = 0;
       p.currentVote = null;
@@ -982,20 +1009,20 @@ function calculateResults(room) {
 
   const isGameOver = (topPlayer && topPlayer.score >= TARGET_SCORE) || room.questionsPlayed >= MAX_QUESTIONS;
 
+  // תמיד מציגים קודם את תוצאות הסיבוב - גם (ובעיקר!) בסיבוב האחרון.
+  // אם המשחק הסתיים, שומרים את המנצח והמנהל חושף אותו בלחיצת כפתור.
   if (isGameOver) {
     room.gameOver = true;
-    io.to(room.id).emit('game_over', {
-      winner: topPlayer,
-      playersList: playersList
-    });
-  } else {
-    io.to(room.id).emit('show_results', {
-      winningVote: winnerName,
-      isTie: isTie,
-      votesCount: votes,
-      playersList: playersList
-    });
+    room.finalWinner = { name: topPlayer.name, score: topPlayer.score };
   }
+
+  io.to(room.id).emit('show_results', {
+    winningVote: winnerName,
+    isTie: isTie,
+    votesCount: votes,
+    playersList: playersList,
+    isFinal: isGameOver
+  });
 
   io.to(room.id).emit('update_players', playersList);
 }
