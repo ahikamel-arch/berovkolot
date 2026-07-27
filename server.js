@@ -9,7 +9,7 @@ const io = new Server(server, {
   cors: { origin: "*" } 
 });
 
-const VERSION = '1.5';
+const VERSION = '1.7';
 
 app.use(express.static(path.join(__dirname, 'public'), {
   // מונע מדפדפנים (בעיקר בנייד) להגיש גרסה ישנה של הדפים מהמטמון
@@ -438,7 +438,9 @@ function createRoom(roomId, hostSocketId) {
     currentQuestion: null,   // השאלה הפעילה כרגע
     roundActive: false,      // האם מקבלים הצבעות כרגע
     gameOver: false,         // האם המשחק הסתיים (עד restart)
-    finalWinner: null        // המנצח שממתין לחשיפה במסך הסיום
+    finalWinner: null,       // המנצח שממתין לחשיפה במסך הסיום
+    winnerRevealed: false,   // האם המנהל כבר חשף את המנצח
+    lastResults: null        // תוצאות הסיבוב האחרון - כדי שמסך הצפייה יוכל להצטרף באמצע
   };
   rooms.set(roomId, room);
   broadcastRoomList();
@@ -729,6 +731,21 @@ io.on('connection', (socket) => {
     }
   });
 
+  // מסך צפייה (טלוויזיה/מקרן) - מצטרף לחדר כצופה בלבד, בלי להיות שחקן
+  socket.on('watch_room', (data) => {
+    const roomId = ((data && data.roomId) || '').trim();
+    const room = rooms.get(roomId);
+
+    if (!room) {
+      socket.emit('watch_error', 'החדר לא נמצא. ייתכן שהמשחק עדיין לא נוצר או שכבר הסתיים.');
+      return;
+    }
+
+    socket.join(room.id);
+    socket.watchingRoomId = room.id; // לצורך חיבור מחדש אוטומטי בלבד - לא מוסיף לרשימת השחקנים
+    socket.emit('watch_sync', buildWatchPayload(room));
+  });
+
   socket.on('next_question', (data) => {
     const reqRoomId = (data && data.roomId) ? data.roomId : socket.roomId;
     const room = rooms.get(reqRoomId);
@@ -858,6 +875,7 @@ io.on('connection', (socket) => {
       winner: room.finalWinner,
       playersList: getPlayersList(room)
     });
+    room.winnerRevealed = true;
   });
 
   socket.on('submit_vote', (vote) => {
@@ -895,6 +913,8 @@ io.on('connection', (socket) => {
 
     room.gameOver = false;
     room.finalWinner = null;
+    room.winnerRevealed = false;
+    room.lastResults = null;
     room.players.forEach(p => {
       p.score = 0;
       p.currentVote = null;
@@ -1013,18 +1033,38 @@ function calculateResults(room) {
   // אם המשחק הסתיים, שומרים את המנצח והמנהל חושף אותו בלחיצת כפתור.
   if (isGameOver) {
     room.gameOver = true;
+    room.winnerRevealed = false;
     room.finalWinner = { name: topPlayer.name, score: topPlayer.score };
   }
 
-  io.to(room.id).emit('show_results', {
+  const resultsPayload = {
     winningVote: winnerName,
     isTie: isTie,
     votesCount: votes,
     playersList: playersList,
     isFinal: isGameOver
-  });
+  };
+
+  room.lastResults = resultsPayload; // כדי שמסך הצפייה שמצטרף באמצע יראה את התוצאות האחרונות
+  io.to(room.id).emit('show_results', resultsPayload);
 
   io.to(room.id).emit('update_players', playersList);
+}
+
+// שולף תמונת מצב מלאה של החדר עבור מסך צפייה שמצטרף/מתחבר מחדש
+function buildWatchPayload(room) {
+  return {
+    roomId: room.id,
+    roundActive: room.roundActive,
+    question: room.currentQuestion,
+    qIndex: room.questionsPlayed,
+    total: MAX_QUESTIONS,
+    players: getPlayersList(room),
+    lastResults: room.lastResults,
+    gameOver: room.gameOver,
+    winnerRevealed: room.winnerRevealed,
+    finalWinner: room.finalWinner
+  };
 }
 
 const PORT = process.env.PORT || 10000;
